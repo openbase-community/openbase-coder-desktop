@@ -7,8 +7,8 @@ import {
 } from "./pairingPlatform";
 
 describe("usesManagedLinuxTailscale", () => {
-  it("selects the managed flow only on Linux", () => {
-    expect(usesManagedLinuxTailscale("linux")).toBe(true);
+  it("does not activate the legacy Tailscale-app flow on Linux", () => {
+    expect(usesManagedLinuxTailscale("linux")).toBe(false);
   });
 
   it("keeps Darwin and legacy preload bridges on the existing flow", () => {
@@ -16,15 +16,15 @@ describe("usesManagedLinuxTailscale", () => {
     expect(usesManagedLinuxTailscale(undefined)).toBe(false);
   });
 
-  it("uses durable onboarding completion only on Linux", () => {
-    expect(usesDurableLinuxOnboardingCompletion("linux", true)).toBe(true);
+  it("does not use legacy Linux completion state", () => {
+    expect(usesDurableLinuxOnboardingCompletion("linux", true)).toBe(false);
     expect(usesDurableLinuxOnboardingCompletion("linux", false)).toBe(false);
     expect(usesDurableLinuxOnboardingCompletion("darwin", true)).toBe(false);
     expect(usesDurableLinuxOnboardingCompletion(undefined, true)).toBe(false);
   });
 
-  it("waits for persisted flags only on Linux", () => {
-    expect(waitsForLinuxOnboardingFlags("linux", false)).toBe(true);
+  it("does not wait for legacy Linux flags", () => {
+    expect(waitsForLinuxOnboardingFlags("linux", false)).toBe(false);
     expect(waitsForLinuxOnboardingFlags("linux", true)).toBe(false);
     expect(waitsForLinuxOnboardingFlags("darwin", false)).toBe(false);
     expect(waitsForLinuxOnboardingFlags(undefined, false)).toBe(false);

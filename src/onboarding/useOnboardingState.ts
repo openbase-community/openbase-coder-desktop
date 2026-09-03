@@ -32,6 +32,15 @@ export function useOnboardingState(
   installer: InstallerApi | undefined,
   backendBaseUrl: string,
 ) {
+  const authenticatedBackendFetch = useCallback(
+    async (path: string, init?: RequestInit) => {
+      const token = await window.__openbaseNativeAuth?.getToken();
+      const headers = new Headers(init?.headers);
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      return fetch(`${backendBaseUrl}${path}`, { ...init, headers });
+    },
+    [backendBaseUrl],
+  );
   const [status, setStatus] = useState<BackendStatus>("checking");
   // True while a health fetch is in flight. Kept separate from status so
   // rechecks (window focus, Recheck button) revalidate against the last
@@ -118,7 +127,7 @@ export function useOnboardingState(
 
   const refreshCliOnboardingStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${backendBaseUrl}/api/onboarding/status/`);
+      const response = await authenticatedBackendFetch("/api/onboarding/status/");
       if (!response.ok) {
         return;
       }
@@ -128,7 +137,7 @@ export function useOnboardingState(
     } finally {
       setCliStatusChecked(true);
     }
-  }, [backendBaseUrl]);
+  }, [authenticatedBackendFetch]);
 
   const checkHealth = useCallback(async () => {
     // Stale-while-revalidate: status keeps its last settled value while the
@@ -179,7 +188,7 @@ export function useOnboardingState(
     // Live pairing facts from the cloud registry, proxied by the CLI
     // (GET /api/onboarding/cloud-state/) — never a cached snapshot.
     try {
-      const response = await fetch(`${backendBaseUrl}/api/onboarding/cloud-state/`);
+      const response = await authenticatedBackendFetch("/api/onboarding/cloud-state/");
       if (response.status === 404 || response.status === 405) {
         setCloudStateError(
           "This Openbase CLI does not report live cloud pairing state yet. Update the CLI, then recheck.",
@@ -206,7 +215,7 @@ export function useOnboardingState(
         error instanceof Error ? error.message : "Could not check cloud onboarding state.",
       );
     }
-  }, [backendBaseUrl]);
+  }, [authenticatedBackendFetch]);
 
   const refreshTailscaleIdentity = useCallback(async () => {
     // One implementation (the CLI's tailscale_self check), two access
@@ -303,7 +312,7 @@ export function useOnboardingState(
     try {
       // The CLI owns the env file; write through its settings API rather
       // than a second env-file writer in the desktop app.
-      const response = await fetch(`${backendBaseUrl}/api/settings/env/`, {
+      const response = await authenticatedBackendFetch("/api/settings/env/", {
         body: JSON.stringify({
           entries: Object.entries(payload).map(([key, value]) => ({ key, value })),
         }),
@@ -324,7 +333,7 @@ export function useOnboardingState(
     } finally {
       setVoiceKeysSaving(false);
     }
-  }, [audio, backendBaseUrl, refreshCliOnboardingStatus, voiceKeyInputs]);
+  }, [audio, authenticatedBackendFetch, refreshCliOnboardingStatus, voiceKeyInputs]);
 
   useEffect(() => {
     void checkHealth();

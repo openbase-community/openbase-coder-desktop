@@ -10,6 +10,8 @@ import {
 } from "react";
 
 import { AppUpdateNotice } from "./AppUpdateNotice";
+import { productAnalytics } from "./analytics";
+import { ProductAnalyticsPreference } from "./ProductAnalyticsPreference";
 import openbaseWordmarkUrl from "../assets/openbase-logo-and-text.svg";
 import { DesktopControlNotice } from "./DesktopControlNotice";
 import { StatusIcon } from "./onboarding/components/StatusIcon";
@@ -25,7 +27,11 @@ import {
   audioProviderChoice,
   backendChoiceFromCliBackend,
 } from "./onboarding/cliStatus";
-import { deriveCloudPairingFacts } from "./onboarding/cloudPairing";
+import {
+  deriveCloudPairingFacts,
+  localBackendReadyForOnboarding,
+  privateNetworkPairingReady,
+} from "./onboarding/cloudPairing";
 import {
   deriveLaunchSettling,
   deriveOnboardingComplete,
@@ -54,25 +60,93 @@ import { SetupPage } from "./onboarding/pages/SetupPage";
 import { VerifyPage } from "./onboarding/pages/VerifyPage";
 import { VoiceKeysPage } from "./onboarding/pages/VoiceKeysPage";
 import { WelcomePage } from "./onboarding/pages/WelcomePage";
-import type { BackendChoice, OnboardingPage } from "./onboarding/types";
+import type {
+  BackendChoice,
+  OnboardingPage,
+  TailnetExperience,
+} from "./onboarding/types";
 import { useInstaller } from "./onboarding/useInstaller";
 import { useLinuxTailscaleOnboarding } from "./onboarding/useLinuxTailscaleOnboarding";
 import { useOnboardingState } from "./onboarding/useOnboardingState";
-import { applyTailscaleConnectionPrerequisite } from "./onboarding/tailscaleConnectionPrerequisite";
+import {
+  applyTailscaleConnectionPrerequisite,
+  type TailnetProvider,
+} from "./onboarding/tailscaleConnectionPrerequisite";
 
 export default function DesktopShell({ children }: { children: ReactNode }) {
   const backendBaseUrl = useMemo(() => getBackendBaseUrl(), []);
+  const developerDashboardOnly =
+    (
+      window.__OPENBASE_RUNTIME_CONFIG__ as
+        | { developerDashboardOnly?: boolean }
+        | undefined
+    )?.developerDashboardOnly === true;
   const installer = window.__OPENBASE_INSTALLER__;
   // Voluntary "look back" navigation only; the step the flow is actually on
   // is derived from observable facts (see deriveOnboardingStep).
   const [pageOverride, setPageOverride] = useState<OnboardingPage | null>(null);
   const [selectedBackend, setSelectedBackend] = useState<BackendChoice>(DEFAULT_SETUP_BACKEND);
+  // This machine's tailnet transport (mirrors the CLI env; account-level
+  // choices flow through the CLI's orchestrator).
+  const [tailnetProvider, setTailnetProvider] = useState<TailnetProvider>("tailscale");
+  const [tailnetOptions, setTailnetOptions] = useState<TailnetExperience[]>([]);
+  const [tailnetCatalogError, setTailnetCatalogError] = useState<string | null>(null);
+  const refreshTailnetProvider = useCallback(async () => {
+    try {
+      const result = await installer?.tailnetProvider?.();
+      if (!result?.ok || !result.options) {
+        setTailnetCatalogError(
+          result?.error || "Could not load networking choices from the Openbase CLI.",
+        );
+        return;
+      }
+      const supportedOptions = result.options.filter(
+        (option) =>
+          option.electron_onboarding &&
+          (!installer?.platform ||
+            option.electron_platforms.includes(installer.platform)),
+      );
+      if (supportedOptions.length === 0) {
+        setTailnetCatalogError(
+          "This Openbase CLI did not provide a networking option for this platform.",
+        );
+        return;
+      }
+      setTailnetCatalogError(null);
+      setTailnetOptions(supportedOptions);
+      setTailnetProvider(
+        supportedOptions.some((option) => option.provider === result.provider)
+          ? (result.provider as TailnetProvider)
+          : "tailscale",
+      );
+    } catch (error) {
+      setTailnetCatalogError(
+        error instanceof Error
+          ? error.message
+          : "Could not load networking choices from the Openbase CLI.",
+      );
+    }
+  }, [installer]);
+  useEffect(() => {
+    void refreshTailnetProvider();
+  }, [refreshTailnetProvider]);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   // Latched open once the launch probes settle; see launchSettling below.
   const [launchGateOpen, setLaunchGateOpen] = useState(false);
   const autoMacRegistrationAttemptRef = useRef<string | null>(null);
+  const appSessionTrackedRef = useRef(false);
+  const onboardingStartedAtRef = useRef<number | null>(null);
+  const onboardingStepStartedAtRef = useRef(Date.now());
+  const lastOnboardingPageRef = useRef<OnboardingPage | null>(null);
+  const completedOnboardingStepsRef = useRef(new Set<OnboardingPage>());
+  const onboardingCompletedTrackedRef = useRef(false);
+  const onboardingErrorsTrackedRef = useRef(new Set<string>());
 
   useEffect(() => {
+    if (!appSessionTrackedRef.current) {
+      appSessionTrackedRef.current = true;
+      productAnalytics.trackSessionStartedOnce();
+    }
     // The desktop app's own version, reported by the Electron main process
     // over the app-updates bridge.
     void window.__OPENBASE_APP_UPDATES__?.status()
@@ -168,8 +242,19 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
         prerequisites,
         installer?.platform,
         tailscaleIdentity,
+        tailnetProvider,
       ),
-    [installer?.platform, prerequisites, tailscaleIdentity],
+    [installer?.platform, prerequisites, tailnetProvider, tailscaleIdentity],
+  );
+
+  const chooseTailnetProvider = useCallback(
+    (provider: TailnetProvider) => {
+      // Selection is setup input, not a provider switch. Setup owns first
+      // installation; invoking tailnet set-provider before it exists would
+      // try to restart and register services that have not been installed.
+      setTailnetProvider(provider);
+    },
+    [],
   );
   const missingPrerequisites = effectivePrerequisites.filter((item) => !item.ok);
   const missingRequiredPrerequisites = missingPrerequisites.filter((item) =>
@@ -181,14 +266,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     effectivePrerequisites.length > 0 && missingRequiredPrerequisites.length === 0;
   const canRunSetup = Boolean(installer) && !runningCommand && requiredPrerequisitesOk;
   const canRunUtilities = Boolean(installer) && !runningCommand;
-  const setupHadBlockingWarning = setupSteps.tailscale_serve?.status === "warn";
-  // Tailscale Serve health comes from the CLI status payload, so a serve
-  // that broke after setup blocks completion on relaunch too — not only in
-  // the session that ran setup.
-  const backendReadyForOnboarding =
-    status === "ready" &&
-    !setupHadBlockingWarning &&
-    tailscaleServe?.healthy !== false;
+  const backendReadyForOnboarding = localBackendReadyForOnboarding(status);
   const setupSucceeded = setupCompleted;
   // The install's audio provider and voice readiness are CLI facts; older
   // CLIs that do not report them must never block on voice.
@@ -211,6 +289,17 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     mobileOnTailscale,
     tailscalePaired,
   } = deriveCloudPairingFacts(cloudState);
+  const privateNetworkHealthy = tailscaleServe?.healthy === true;
+  const pairingReady = privateNetworkPairingReady(
+    tailscalePaired,
+    tailscaleServe?.healthy,
+  );
+  const effectivePairingDiagnosticMessages = [
+    ...pairingDiagnosticMessages,
+    ...(tailscalePaired && !privateNetworkHealthy
+      ? ["The devices are registered, but the selected private-network routes are not healthy yet."]
+      : []),
+  ];
   const onboardingFacts = {
     backendAuthReady,
     backendReady: backendReadyForOnboarding,
@@ -220,7 +309,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     pairingAcknowledged,
     requiredPrerequisitesOk,
     setupSucceeded,
-    tailscalePaired,
+    tailscalePaired: pairingReady,
     voiceConfigured,
     welcomeAcknowledged,
   };
@@ -411,6 +500,82 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     { id: "verify", label: "Verify" },
   ];
 
+  useEffect(() => {
+    const now = Date.now();
+    if (onboardingComplete && !forceOnboarding) {
+      if (
+        onboardingStartedAtRef.current !== null &&
+        !onboardingCompletedTrackedRef.current
+      ) {
+        onboardingCompletedTrackedRef.current = true;
+        productAnalytics.track("onboarding_completed", {
+          duration_ms: now - onboardingStartedAtRef.current,
+        });
+      }
+      return;
+    }
+    if (!launchGateOpen) return;
+
+    if (onboardingStartedAtRef.current === null) {
+      onboardingStartedAtRef.current = now;
+      productAnalytics.track("onboarding_started", {
+        entry_mode: forceOnboarding ? "forced_replay" : "first_run_or_resume",
+      });
+    }
+    if (lastOnboardingPageRef.current !== page) {
+      lastOnboardingPageRef.current = page;
+      onboardingStepStartedAtRef.current = now;
+      productAnalytics.track("onboarding_step_viewed", {
+        step_id: page,
+        step_index: onboardingFlowIndex(page) + 1,
+        step_count: pages.length,
+      });
+    }
+  }, [forceOnboarding, launchGateOpen, onboardingComplete, page, pages.length]);
+
+  const completeOnboardingStep = useCallback(
+    (step: OnboardingPage, completionMethod = "continue") => {
+      if (completedOnboardingStepsRef.current.has(step)) return;
+      completedOnboardingStepsRef.current.add(step);
+      productAnalytics.track("onboarding_step_completed", {
+        step_id: step,
+        duration_ms: Math.max(0, Date.now() - onboardingStepStartedAtRef.current),
+        completion_method: completionMethod,
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const errors: Array<[string, boolean]> = [
+      ["prerequisite_check_failed", Boolean(checkError)],
+      ["setup_command_failed", Boolean(commandError)],
+      ["voice_configuration_failed", Boolean(voiceKeyError)],
+      ["cloud_state_unavailable", Boolean(cloudStateError)],
+      ["tailscale_connection_failed", Boolean(linuxTailscaleError)],
+    ];
+    for (const [errorCode, active] of errors) {
+      const key = `${page}:${errorCode}`;
+      if (!active || onboardingErrorsTrackedRef.current.has(key)) continue;
+      onboardingErrorsTrackedRef.current.add(key);
+      productAnalytics.track("onboarding_step_failed", {
+        step_id: page,
+        error_code: errorCode,
+        is_retryable: true,
+      });
+    }
+  }, [checkError, cloudStateError, commandError, linuxTailscaleError, page, voiceKeyError]);
+
+  if (developerDashboardOnly) {
+    return (
+      <>
+        <DesktopControlNotice />
+        <ProductAnalyticsPreference />
+        {children}
+      </>
+    );
+  }
+
   if (
     (waitsForLinuxOnboardingFlags(installer?.platform, flagsLoaded) ||
       launchSettling) &&
@@ -431,6 +596,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       <>
         <AppUpdateNotice />
         <DesktopControlNotice />
+        <ProductAnalyticsPreference />
         {children}
       </>
     );
@@ -443,6 +609,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     >
       <AppUpdateNotice />
       <DesktopControlNotice />
+      <ProductAnalyticsPreference />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
@@ -532,6 +699,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
           {page === "welcome" && (
             <WelcomePage
               onContinue={() => {
+                completeOnboardingStep("welcome");
                 acknowledgeWelcome();
                 clearPageOverride();
               }}
@@ -549,12 +717,21 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               missingRequiredPrerequisites={missingRequiredPrerequisites}
               onCheckPrerequisites={checkPrerequisites}
               onConnectTailscale={() => void connectLinuxTailscale()}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("prerequisites");
+                clearPageOverride();
+              }}
               onDownloadTailscale={() => void openTailscaleDownload()}
               onOpenTailscale={() => void openTailscaleApp()}
+              onRefreshTailnetOptions={() => void refreshTailnetProvider()}
               onStartCommand={(commandId) => void startCommand(commandId)}
+              onChooseTailnetProvider={(provider) => void chooseTailnetProvider(provider)}
+              platform={installer?.platform}
               prerequisites={effectivePrerequisites}
               runningCommand={runningCommand}
+              tailnetProvider={tailnetProvider}
+              tailnetOptions={tailnetOptions}
+              tailnetOptionsError={tailnetCatalogError}
               tailscaleConnecting={linuxTailscaleConnecting}
               tailscaleError={linuxTailscaleError}
             />
@@ -568,7 +745,10 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               canContinue={setupSucceeded}
               lastExit={lastExit}
               onCancelCommand={() => void cancelCommand()}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("setup");
+                clearPageOverride();
+              }}
               installedBackend={installedBackend}
               onStartCommand={startCommand}
               runningCommand={runningCommand}
@@ -576,6 +756,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               setSelectedBackend={setSelectedBackend}
               setupSteps={setupSteps}
               setupSucceeded={setupSucceeded}
+              tailnetProvider={tailnetProvider}
             />
           )}
 
@@ -587,7 +768,10 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               commandError={commandError}
               commandLines={commandLines}
               onCancelCommand={() => void cancelCommand()}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("backendAuth");
+                clearPageOverride();
+              }}
               onRecheck={() => void refreshCliOnboardingStatus()}
               onStartCommand={startCommand}
               runningCommand={runningCommand}
@@ -599,7 +783,10 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               audio={audio}
               canRunUtilities={canRunUtilities}
               commandError={commandError}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("voiceKeys");
+                clearPageOverride();
+              }}
               onSaveVoiceKeys={saveVoiceKeys}
               onStartCommand={startCommand}
               selectedAudioProvider={selectedAudioProvider}
@@ -622,7 +809,10 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               loginAttempts={loginAttempts}
               loginStatus={loginStatus}
               onCancelCommand={() => void cancelCommand()}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("login");
+                clearPageOverride();
+              }}
               onRefreshLoginStatus={() => void refreshCliOnboardingStatus()}
               onStartCommand={startCommand}
               runningCommand={runningCommand}
@@ -633,7 +823,10 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
             <MobilePage
               cloudStateError={cloudStateError}
               mobileAuthenticated={mobileAuthenticated}
-              onContinue={clearPageOverride}
+              onContinue={() => {
+                completeOnboardingStep("mobile");
+                clearPageOverride();
+              }}
             />
           )}
 
@@ -653,14 +846,15 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
                 mobileOnTailscale={mobileOnTailscale}
                 onConnectTailscale={() => void connectLinuxTailscale()}
                 onContinue={() => {
+                  completeOnboardingStep("pairing");
                   acknowledgePairing();
                   clearPageOverride();
                 }}
                 onRefreshTailscale={() => void refreshTailscaleIdentity()}
-                pairingDiagnosticMessages={pairingDiagnosticMessages}
+                pairingDiagnosticMessages={effectivePairingDiagnosticMessages}
                 registrationRunning={runningCommand === "onboardingReport"}
                 tailscaleIdentity={tailscaleIdentity}
-                tailscalePaired={tailscalePaired}
+                tailscalePaired={pairingReady}
               />
             ) : (
               <PairingPage
@@ -673,16 +867,21 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
                 macAuthenticated={loggedIn}
                 mobileAuthenticated={mobileAuthenticated}
                 mobileOnTailscale={mobileOnTailscale}
+                networkConnecting={runningCommand === "tailnetSetProvider"}
+                onConnectNetwork={() =>
+                  void startCommand("tailnetSetProvider", { provider: tailnetProvider })
+                }
                 onContinue={() => {
+                  completeOnboardingStep("pairing");
                   acknowledgePairing();
                   clearPageOverride();
                 }}
-                onOpenTailscale={() => void openTailscaleApp()}
                 onRefreshTailscale={() => void refreshTailscaleIdentity()}
                 registrationRunning={runningCommand === "onboardingReport"}
-                pairingDiagnosticMessages={pairingDiagnosticMessages}
+                pairingDiagnosticMessages={effectivePairingDiagnosticMessages}
                 tailscaleIdentity={tailscaleIdentity}
-                tailscalePaired={tailscalePaired}
+                tailscalePaired={pairingReady}
+                tailnetProvider={tailnetProvider}
               />
             ))}
 

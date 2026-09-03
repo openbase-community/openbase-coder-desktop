@@ -6,6 +6,7 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { createDesktopControlServer } = require("./desktop-control-server.cjs");
+const { isDeveloperDashboardOnly } = require("./developer-dashboard.cjs");
 const { maybeMigrateLegacyAppBundle } = require("./app-brand-migration.cjs");
 const { maybeOfferInstallerCleanup } = require("./installer-cleanup.cjs");
 const {
@@ -14,6 +15,9 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
+const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
+const { sendInstallerEvent } = require("./installer-events.cjs");
+const { createSingleFlight } = require("./single-flight.cjs");
 const {
   COMPANION_LOG_PATH,
   LOG_DIR,
@@ -37,6 +41,19 @@ app.setPath("userData", path.join(app.getPath("appData"), "Openbase Coder"));
 const rendererUrl = process.env.OPENBASE_CODER_DESKTOP_RENDERER_URL;
 const backendBaseUrl =
   process.env.OPENBASE_CODER_DESKTOP_BACKEND_URL || RUNTIME_DEFAULTS.backendBaseUrl;
+let activeInstallation = null;
+try {
+  activeInstallation = JSON.parse(
+    fs.readFileSync(path.join(os.homedir(), ".openbase", "installation.json"), "utf8"),
+  );
+} catch {
+  // First production launch has no installation yet; onboarding stays enabled.
+}
+const developerDashboardOnly = isDeveloperDashboardOnly({
+  appPackaged: app.isPackaged,
+  envValue: process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
+  installation: activeInstallation,
+});
 const appIconPath = path.join(__dirname, "..", "assets", "openbase-coder-icon.png");
 const mainLogger = installConsoleFileLogger("electron-main", MAIN_LOG_PATH);
 const rendererLogger = createFileLogger("electron-renderer", RENDERER_LOG_PATH);
@@ -44,6 +61,7 @@ const liveKitCompanion = createLiveKitCompanionManager({
   companionLogPath: COMPANION_LOG_PATH,
   electronDir: __dirname,
 });
+const netmeshCompanion = createNetmeshCompanionManager({ electronDir: __dirname });
 let installerProcess = null;
 let linuxTailscaleOnboardingPromise = null;
 let desktopControlServer = null;
@@ -53,27 +71,32 @@ let rendererDeepLinkReady = false;
 const DEEP_LINK_PROTOCOL = "openbase-coder";
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
-const GUI_SHELL_PATHS = [
-  "/opt/homebrew/bin",
-  "/opt/homebrew/sbin",
-  "/usr/local/bin",
-  "/usr/local/sbin",
-  "/usr/bin",
-  "/bin",
-  "/usr/sbin",
-  "/sbin",
-  path.join(os.homedir(), ".local", "bin"),
-  path.join(os.homedir(), ".cargo", "bin"),
-];
+const IS_WINDOWS = process.platform === "win32";
+
+const GUI_SHELL_PATHS = IS_WINDOWS
+  ? [
+      path.join(os.homedir(), ".openbase", "bin"),
+      path.join(os.homedir(), ".local", "bin"),
+      path.join(os.homedir(), ".cargo", "bin"),
+      "C:\\Program Files\\Tailscale",
+    ]
+  : [
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+      "/usr/local/sbin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      path.join(os.homedir(), ".local", "bin"),
+      path.join(os.homedir(), ".cargo", "bin"),
+    ];
 
 // Default macOS Tailscale install path: the Mac App Store variant (see
 // src/onboarding/config.ts TAILSCALE_MAC_APP_STORE_URL for the rationale).
 const TAILSCALE_MAC_APP_STORE_URL =
   "https://apps.apple.com/us/app/tailscale/id1475387142";
-
-const TAILSCALE_RESOLVER =
-  'ts="$(command -v tailscale || true)"; ' +
-  '{ [ -n "$ts" ] || { [ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ] && ts="/Applications/Tailscale.app/Contents/MacOS/Tailscale"; }; } && [ -n "$ts" ]';
 
 const SHELL_INIT_COMMAND = [
   'export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"',
@@ -107,32 +130,6 @@ function shellCommandFromArgs(bin, args) {
   return shellCommand([bin, ...args].map(shellQuote).join(" "));
 }
 
-function shellCheck(command) {
-  return new Promise((resolve) => {
-    const child = spawn(LOGIN_SHELL, ["-lc", shellCommand(command)], {
-      env: installerEnv(),
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      resolve({ ok: false, detail: error.message });
-    });
-    child.on("close", (code) => {
-      resolve({
-        ok: code === 0,
-        detail: (stdout || stderr).trim(),
-      });
-    });
-  });
-}
-
 function shellCapture(command) {
   return new Promise((resolve) => {
     const child = spawn(LOGIN_SHELL, ["-lc", shellCommand(command)], {
@@ -154,6 +151,36 @@ function shellCapture(command) {
       resolve({ code, stderr, stdout });
     });
   });
+}
+
+// Windows has no POSIX login shell, so argv-shaped commands spawn directly
+// there; macOS/Linux keep the login shell so the user's PATH (uv tools,
+// ~/.local/bin, nvm) stays in scope.
+function captureSpawn(bin, args) {
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, { env: installerEnv(), windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      resolve({ code: null, stderr: error.message, stdout: "" });
+    });
+    child.on("close", (code) => {
+      resolve({ code, stderr, stdout });
+    });
+  });
+}
+
+function runArgv(bin, args) {
+  if (IS_WINDOWS) {
+    return captureSpawn(bin, args);
+  }
+  return shellCapture(shellCommandFromArgs(bin, args));
 }
 
 const OPENBASE_BASE_DIR = process.env.OPENBASE_CODER_HOME || path.join(os.homedir(), ".openbase");
@@ -235,10 +262,12 @@ async function copyPackage(sourceRoot, targetRoot) {
 async function pointCurrentAt(targetRoot) {
   await fsp.mkdir(STANDALONE_PACKAGE_ROOT, { recursive: true });
   await fsp.rm(STANDALONE_CURRENT_LINK, { force: true, recursive: true });
-  await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, "dir");
+  // Real symlinks need admin/developer-mode on Windows; a directory
+  // junction resolves the same way for our purposes and never prompts.
+  await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, IS_WINDOWS ? "junction" : "dir");
 }
 
-async function activateBundledCliPackage() {
+async function activateBundledCliPackageOnce() {
   // Forward-only activation (AUTO_UPDATE.md): the bundled package is a
   // first-install seed only. Once `current` resolves to a valid install, the
   // release feed is the sole authority for what `current` points at — never
@@ -282,6 +311,8 @@ async function activateBundledCliPackage() {
   };
 }
 
+const activateBundledCliPackage = createSingleFlight(activateBundledCliPackageOnce);
+
 async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   let activationError = null;
   if (activateBundled) {
@@ -311,7 +342,9 @@ async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
     };
   }
 
-  const pathResult = await shellCapture("command -v openbase-coder");
+  const pathResult = IS_WINDOWS
+    ? await captureSpawn("where", ["openbase-coder"])
+    : await shellCapture("command -v openbase-coder");
   const pathCli = pathResult.stdout.trim().split(/\r?\n/)[0];
   if (pathResult.code === 0 && pathCli) {
     return {
@@ -337,19 +370,12 @@ async function cliVersionDetail(cliPath) {
   if (!cliPath) {
     return "";
   }
-  const result = await shellCapture(shellCommandFromArgs(cliPath, ["--version"]));
+  const result = await runArgv(cliPath, ["--version"]);
   return (result.stdout || result.stderr).trim();
 }
 
 async function checkInstallerPrerequisites() {
-  const [openbaseCoder, tailscale] = await Promise.all([
-    resolveOpenbaseCoderCli(),
-    // Direct-download/App Store Tailscale installs keep the CLI inside the
-    // app bundle rather than on PATH; accept both. Whether Tailscale is
-    // CONNECTED is the CLI's check (tailscale_self), read via the identity
-    // IPC — only binary presence is probed natively here.
-    shellCheck(`${TAILSCALE_RESOLVER} && "$ts" version | head -1`),
-  ]);
+  const openbaseCoder = await resolveOpenbaseCoderCli();
   const openbaseCoderVersion = await cliVersionDetail(openbaseCoder.path);
 
   return {
@@ -358,13 +384,18 @@ async function checkInstallerPrerequisites() {
       {
         id: "platform",
         label: "Operating system",
-        ok: process.platform === "darwin" || process.platform === "linux",
+        ok:
+          process.platform === "darwin" ||
+          process.platform === "linux" ||
+          IS_WINDOWS,
         detail:
           process.platform === "darwin"
             ? "This Mac can use launchd services."
             : process.platform === "linux"
               ? "This Linux machine can use systemd services."
-              : "Openbase setup expects macOS or Linux.",
+              : IS_WINDOWS
+                ? "This Windows machine can use the Windows service backend."
+                : "Openbase setup expects macOS, Linux, or Windows.",
       },
       {
         id: "openbase-coder",
@@ -375,12 +406,10 @@ async function checkInstallerPrerequisites() {
           "Activate the bundled standalone CLI package before running setup.",
       },
       {
-        id: "tailscale",
-        label: "Tailscale",
-        ok: tailscale.ok,
-        detail: tailscale.ok
-          ? "Tailscale is installed."
-          : "Tailscale is not installed on this Mac. Install it from the Mac App Store and connect it for phone-to-computer voice networking, then the check re-runs automatically.",
+        id: "private-network",
+        label: "Private networking",
+        ok: false,
+        detail: "Choose Openbase VPN or Openbase Direct before setup.",
       },
     ],
   };
@@ -398,9 +427,7 @@ async function readTailscaleSelfViaCli() {
   if (!cli.path) {
     return { ok: false, error: cli.detail };
   }
-  const result = await shellCapture(
-    shellCommandFromArgs(cli.path, ["onboarding", "status", "--json"]),
-  );
+  const result = await runArgv(cli.path, ["onboarding", "status", "--json"]);
   const stdout = result.stdout || "";
   const jsonStart = stdout.indexOf("{");
   if (result.code !== 0 || jsonStart === -1) {
@@ -422,8 +449,39 @@ async function readTailscaleSelfViaCli() {
   }
 }
 
+async function readTailnetConfigViaCli() {
+  const cli = await resolveOpenbaseCoderCli();
+  if (!cli.path) {
+    return { ok: false, error: cli.detail };
+  }
+  const result = await runArgv(cli.path, ["onboarding", "status", "--json"]);
+  const stdout = result.stdout || "";
+  const jsonStart = stdout.indexOf("{");
+  if (result.code !== 0 || jsonStart === -1) {
+    return {
+      ok: false,
+      error:
+        (result.stderr || stdout).trim() ||
+        "Could not read tailnet configuration from the Openbase CLI.",
+    };
+  }
+  try {
+    const payload = JSON.parse(stdout.slice(jsonStart));
+    const tailnet = payload.tailnet;
+    if (!tailnet || typeof tailnet !== "object") {
+      return { ok: false, error: "This Openbase CLI does not report tailnet choices." };
+    }
+    return { ok: true, ...tailnet };
+  } catch (error) {
+    return { ok: false, error: `Could not parse CLI onboarding status: ${error.message}` };
+  }
+}
+
 const SETUP_BACKENDS = new Set(["codex", "claude-code", "openbase-cloud"]);
 const SETUP_AUDIO_PROVIDERS = new Set(["openbase-cloud", "cartesia", "local"]);
+// The three tailnet transports (three different networks — the fleet must
+// agree; the CLI records the choice account-side and orchestrates locally).
+const TAILNET_PROVIDERS = new Set(["tailscale", "netmesh", "netmesh-tsnet"]);
 
 function parseDeepLink(rawUrl) {
   if (typeof rawUrl !== "string") {
@@ -534,6 +592,12 @@ async function commandWithOptions(commandId, options = {}) {
       throw new Error(`Unsupported setup audio provider: ${audioProvider}`);
     }
     args = [...command.args, "--backend", backend, "--audio-provider", audioProvider];
+    if (typeof options.tailnetProvider === "string") {
+      if (!TAILNET_PROVIDERS.has(options.tailnetProvider)) {
+        throw new Error(`Unsupported tailnet provider: ${options.tailnetProvider}`);
+      }
+      args = [...args, "--tailnet-provider", options.tailnetProvider];
+    }
     if (options.linkCodexConfig === true) {
       args = [...args, "--link-codex-config"];
     }
@@ -543,6 +607,14 @@ async function commandWithOptions(commandId, options = {}) {
     if (options.fastMode === false) {
       args = [...args, "--no-fast-mode"];
     }
+  }
+
+  if (commandId === "tailnetSetProvider") {
+    const provider = options.provider;
+    if (typeof provider !== "string" || !TAILNET_PROVIDERS.has(provider)) {
+      throw new Error(`Unsupported tailnet provider: ${provider}`);
+    }
+    args = [...command.args, provider];
   }
 
   if (command.needsCli) {
@@ -570,7 +642,7 @@ async function commandWithOptions(commandId, options = {}) {
 async function runActivateCliCommand(event) {
   const commandId = "installCli";
   const commandText = INSTALLER_COMMANDS.installCli.label;
-  event.sender.send("openbase:installer:event", {
+  sendInstallerEvent(event.sender, {
     commandId,
     commandText,
     type: "start",
@@ -581,25 +653,25 @@ async function runActivateCliCommand(event) {
       throw new Error(activation.detail);
     }
     const version = await cliVersionDetail(activation.cliPath);
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       commandId,
       stream: "stdout",
       text: `${activation.detail}\n${version}\n`,
       type: "output",
     });
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       code: 0,
       commandId,
       signal: null,
       type: "exit",
     });
   } catch (error) {
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       commandId,
       error: error.message,
       type: "error",
     });
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       code: 1,
       commandId,
       signal: null,
@@ -641,19 +713,21 @@ async function runInstallerCommand(event, commandId, options = {}) {
 async function startInstallerProcess(event, commandId, command) {
   const { args, bin } = command;
   const commandText = [bin, ...args].join(" ");
-  event.sender.send("openbase:installer:event", {
+  sendInstallerEvent(event.sender, {
     commandId,
     commandText,
     type: "start",
   });
 
-  installerProcess = spawn(LOGIN_SHELL, ["-lc", shellCommandFromArgs(bin, args)], {
-    env: installerEnv(),
-    windowsHide: true,
-  });
+  installerProcess = IS_WINDOWS
+    ? spawn(bin, args, { env: installerEnv(), windowsHide: true })
+    : spawn(LOGIN_SHELL, ["-lc", shellCommandFromArgs(bin, args)], {
+        env: installerEnv(),
+        windowsHide: true,
+      });
 
   installerProcess.stdout.on("data", (chunk) => {
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       commandId,
       stream: "stdout",
       text: chunk.toString(),
@@ -662,7 +736,7 @@ async function startInstallerProcess(event, commandId, command) {
   });
 
   installerProcess.stderr.on("data", (chunk) => {
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       commandId,
       stream: "stderr",
       text: chunk.toString(),
@@ -672,7 +746,7 @@ async function startInstallerProcess(event, commandId, command) {
 
   installerProcess.on("error", (error) => {
     mainLogger.error("installer-command-error", { commandId, error });
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       commandId,
       error: error.message,
       type: "error",
@@ -682,7 +756,7 @@ async function startInstallerProcess(event, commandId, command) {
 
   installerProcess.on("close", (code, signal) => {
     mainLogger.info("installer-command-exit", { code, commandId, signal });
-    event.sender.send("openbase:installer:event", {
+    sendInstallerEvent(event.sender, {
       code,
       commandId,
       signal,
@@ -764,6 +838,32 @@ function setupAppAutoUpdater() {
 
 ipcMain.handle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
+});
+
+ipcMain.handle("openbase:auth:local-api-token", async (event) => {
+  const frameUrl = event.senderFrame?.url || "";
+  const trusted = rendererUrl
+    ? (() => {
+        try {
+          return new URL(frameUrl).origin === new URL(rendererUrl).origin;
+        } catch {
+          return false;
+        }
+      })()
+    : frameUrl.startsWith("file://");
+  if (!trusted) {
+    throw new Error("Local API capability access denied for this renderer.");
+  }
+  const cli = await resolveOpenbaseCoderCli();
+  if (!cli.path) {
+    throw new Error(cli.detail);
+  }
+  const result = await runArgv(cli.path, ["auth", "print-local-api-token"]);
+  const token = result.stdout.trim();
+  if (result.code !== 0 || !token) {
+    throw new Error(result.stderr.trim() || "Could not read the local API capability.");
+  }
+  return token;
 });
 
 ipcMain.handle("openbase:app-update:check", async () => {
@@ -959,6 +1059,83 @@ ipcMain.handle("openbase:onboarding:tailscale-identity", async () => {
   }
 });
 
+ipcMain.handle("openbase:tailnet:provider", async () => {
+  // The CLI owns both the materialized provider and the user-facing transport
+  // catalog. Electron only renders that contract.
+  try {
+    return await readTailnetConfigViaCli();
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+// --- Netmesh VPN companion (macOS): register/approve/connect the embedded
+// full-device netmesh VPN without the standalone Openbase Netmesh app. ---
+
+ipcMain.handle("openbase:netmesh:status", async () => {
+  try {
+    const status = await netmeshCompanion.status();
+    return { ...status, available: netmeshCompanion.available() };
+  } catch (error) {
+    return { ok: false, helper: "unavailable", available: false, error: error.message };
+  }
+});
+
+ipcMain.handle("openbase:netmesh:register", async () => {
+  try {
+    const status = await netmeshCompanion.register();
+    if (status.helper === "requiresApproval") {
+      await netmeshCompanion.openApprovalSettings();
+    }
+    return status;
+  } catch (error) {
+    mainLogger.error("netmesh-register-error", { message: error.message });
+    return { ok: false, helper: "unavailable", error: error.message };
+  }
+});
+
+ipcMain.handle("openbase:netmesh:connect", async () => {
+  try {
+    const cli = await resolveOpenbaseCoderCli();
+    if (!cli.path) {
+      return { ok: false, helper: "unknown", error: cli.detail };
+    }
+    // Mint a single-use enroll key with the signed-in Openbase account; the
+    // companion hands it to the root daemon over code-sign-verified XPC.
+    const enrollment = await runArgv(cli.path, ["tailnet", "enroll", "--json"]);
+    const stdout = enrollment.stdout || "";
+    const jsonStart = stdout.indexOf("{");
+    if (enrollment.code !== 0 || jsonStart === -1) {
+      return {
+        ok: false,
+        helper: "unknown",
+        error:
+          (enrollment.stderr || stdout).trim() ||
+          "Could not mint a netmesh key — sign in to Openbase first.",
+      };
+    }
+    const { control_url: controlURL, auth_key: authKey } = JSON.parse(
+      stdout.slice(jsonStart),
+    );
+    return await netmeshCompanion.connect({
+      controlURL,
+      authKey,
+      hostname: os.hostname().replace(/\.local$/i, ""),
+    });
+  } catch (error) {
+    mainLogger.error("netmesh-connect-error", { message: error.message });
+    return { ok: false, helper: "unavailable", error: error.message };
+  }
+});
+
+ipcMain.handle("openbase:netmesh:disconnect", async () => {
+  try {
+    return await netmeshCompanion.disconnect();
+  } catch (error) {
+    return { ok: false, helper: "unavailable", error: error.message };
+  }
+});
+
 ipcMain.handle("openbase:onboarding:linux-tailscale-connect", async () => {
   if (linuxTailscaleOnboardingPromise) {
     return {
@@ -975,7 +1152,7 @@ ipcMain.handle("openbase:onboarding:linux-tailscale-connect", async () => {
       }
       await runLinuxTailscalePostConnect({
         cliPath: cli.path,
-        runCommand: (bin, args) => shellCapture(shellCommandFromArgs(bin, args)),
+        runCommand: (bin, args) => runArgv(bin, args),
       });
     },
     openExternal: (url) => shell.openExternal(url),
@@ -1094,7 +1271,10 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      additionalArguments: [`--openbase-backend-base-url=${backendBaseUrl}`],
+      additionalArguments: [
+        `--openbase-backend-base-url=${backendBaseUrl}`,
+        ...(developerDashboardOnly ? ["--openbase-developer-dashboard-only=1"] : []),
+      ],
     },
   });
   mainWindow = window;
@@ -1199,6 +1379,9 @@ if (gotSingleInstanceLock) {
 app.on("before-quit", () => {
   desktopControlServer?.stop();
   liveKitCompanion.cleanup?.();
+  // Tears down only the control process — the netmesh VPN is a launchd daemon
+  // and intentionally stays up across app quits.
+  netmeshCompanion.cleanup?.();
 });
 
 app.on("window-all-closed", () => {

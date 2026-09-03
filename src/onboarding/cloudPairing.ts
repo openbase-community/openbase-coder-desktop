@@ -22,23 +22,34 @@ export function hasAdvertisedTailscale(device: CloudOnboardingDevice) {
   );
 }
 
+export function privateNetworkPairingReady(
+  devicesPaired: boolean,
+  routesHealthy: boolean | undefined,
+): boolean {
+  return devicesPaired && routesHealthy === true;
+}
+
+export function localBackendReadyForOnboarding(status: string): boolean {
+  // Managed networking is intentionally connected after account login. Route
+  // health gates pairing, not durable CLI/backend setup, so a relaunch before
+  // pairing must resume onboarding instead of returning to Setup.
+  return status === "ready";
+}
+
 function factMessage(fact: CloudOnboardingMissingFact) {
-  if (fact.message) {
-    return fact.message;
-  }
   switch (fact.code) {
     case "desktop_not_registered":
       return "This Mac has not registered with Openbase Cloud yet.";
     case "desktop_tailscale_missing":
-      return "This Mac is registered, but it has not reported a Tailscale address.";
+      return "This Mac is registered, but it has not reported a private-network address.";
     case "mobile_not_registered":
       return "No signed-in iPhone has registered with Openbase Cloud yet.";
     case "mobile_tailscale_missing":
-      return "The iPhone is registered, but it has not reported a Tailscale address.";
+      return "The iPhone is registered, but it has not reported a private-network address.";
     case "tailnet_mismatch":
-      return "This Mac and iPhone appear to be signed into different Tailscale tailnets.";
+      return "This Mac and iPhone appear to be on different private networks.";
     default:
-      return null;
+      return fact.message ?? null;
   }
 }
 
@@ -73,14 +84,14 @@ export function deriveCloudPairingFacts(
       diagnosticMessages.push("This Mac has not registered with Openbase Cloud yet.");
     } else if (!desktopOnTailscale) {
       diagnosticMessages.push(
-        "This Mac is registered, but it has not reported a Tailscale address.",
+        "This Mac is registered, but it has not reported a private-network address.",
       );
     }
     if (!mobileAuthenticated) {
       diagnosticMessages.push("No signed-in iPhone has registered with Openbase Cloud yet.");
     } else if (!mobileOnTailscale) {
       diagnosticMessages.push(
-        "The iPhone is registered, but it has not reported a Tailscale address.",
+        "The iPhone is registered, but it has not reported a private-network address.",
       );
     }
   }

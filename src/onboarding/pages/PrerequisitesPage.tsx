@@ -1,5 +1,5 @@
 import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { ManualFallback } from "../components/ManualFallback";
 import { PageShell } from "../components/PageShell";
@@ -7,7 +7,8 @@ import { PrerequisiteAction } from "../components/PrerequisiteAction";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { StatusIcon } from "../components/StatusIcon";
 import { REQUIRED_PREREQUISITE_IDS } from "../config";
-import type { InstallerCommand, Prerequisite } from "../types";
+import type { TailnetProvider } from "../tailscaleConnectionPrerequisite";
+import type { InstallerCommand, Prerequisite, TailnetExperience } from "../types";
 
 export function PrerequisitesPage({
   canRunSetup,
@@ -18,13 +19,19 @@ export function PrerequisitesPage({
   missingPrerequisites,
   missingRequiredPrerequisites,
   onCheckPrerequisites,
+  onChooseTailnetProvider,
   onConnectTailscale,
   onContinue,
   onDownloadTailscale,
   onOpenTailscale,
+  onRefreshTailnetOptions,
   onStartCommand,
+  platform,
   prerequisites,
   runningCommand,
+  tailnetProvider,
+  tailnetOptions,
+  tailnetOptionsError,
   tailscaleConnecting,
   tailscaleError,
 }: {
@@ -36,33 +43,51 @@ export function PrerequisitesPage({
   missingPrerequisites: Prerequisite[];
   missingRequiredPrerequisites: Prerequisite[];
   onCheckPrerequisites: () => void;
+  onChooseTailnetProvider: (provider: TailnetProvider) => void;
   onConnectTailscale: () => void;
   onContinue: () => void;
   onDownloadTailscale: () => void;
   onOpenTailscale: () => void;
+  onRefreshTailnetOptions: () => void;
   onStartCommand: (commandId: InstallerCommand) => void;
+  platform: string | undefined;
   prerequisites: Prerequisite[];
   runningCommand: InstallerCommand | null;
+  tailnetProvider: TailnetProvider;
+  tailnetOptions: TailnetExperience[];
+  tailnetOptionsError: string | null;
   tailscaleConnecting: boolean;
   tailscaleError: string | null;
 }) {
-  // Re-scan when the window regains focus so installing Tailscale in another
-  // app and coming back flips the check without a manual click.
+  const refreshPrerequisites = useCallback(() => {
+    onCheckPrerequisites();
+    onRefreshTailnetOptions();
+  }, [onCheckPrerequisites, onRefreshTailnetOptions]);
+
+  // Re-scan both the runtime and the CLI-owned networking catalog on focus.
   useEffect(() => {
-    window.addEventListener("focus", onCheckPrerequisites);
-    return () => window.removeEventListener("focus", onCheckPrerequisites);
-  }, [onCheckPrerequisites]);
+    window.addEventListener("focus", refreshPrerequisites);
+    return () => window.removeEventListener("focus", refreshPrerequisites);
+  }, [refreshPrerequisites]);
+
+  // Electron offers only the Openbase-owned experiences. Their names and
+  // capability copy come from the CLI onboarding contract.
+  const privateNetworkPrerequisite = prerequisites.find(
+    (item) => item.id === "private-network",
+  );
+  const showConnectionChoice = privateNetworkPrerequisite !== undefined;
+  const commandBusy = Boolean(runningCommand) || tailscaleConnecting;
 
   return (
     <PageShell
       eyebrow="Step 2"
       heading="Check runtime readiness"
-      support="The desktop app activates its bundled Openbase CLI, then checks Tailscale for phone-to-computer voice networking."
+      support="The desktop app activates its bundled Openbase CLI, then configures private phone-to-computer networking."
     >
       <div className="flex flex-wrap gap-3">
         <PrimaryButton
           disabled={isCheckingPrerequisites}
-          onClick={onCheckPrerequisites}
+          onClick={refreshPrerequisites}
         >
           {isCheckingPrerequisites ? (
             <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
@@ -88,6 +113,64 @@ export function PrerequisitesPage({
       {tailscaleError && (
         <div className="mt-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
           {tailscaleError}
+        </div>
+      )}
+
+      {showConnectionChoice && (
+        <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+          <div className="text-sm font-medium text-zinc-950">
+            Can this environment support a VPN?
+          </div>
+          <div className="mt-1 text-xs leading-5 text-zinc-600">
+            Choose the VPN for full feature access, including opening websites
+            your agents create in a phone browser. Choose Direct only when a
+            managed or restricted environment cannot install a VPN.
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {tailnetOptions.map((option) => {
+              const selected = tailnetProvider === option.provider;
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    selected
+                      ? "border-[#18498B] bg-blue-50"
+                      : "border-zinc-200 bg-white hover:border-zinc-300"
+                  }`}
+                  disabled={commandBusy}
+                  key={option.provider}
+                  onClick={() => onChooseTailnetProvider(option.provider)}
+                  type="button"
+                >
+                  <div className="text-sm font-semibold text-zinc-950">
+                    {option.requires_vpn ? "Yes — " : "No — "}
+                    {option.name}
+                    {option.recommended ? " (recommended)" : ""}
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-zinc-600">
+                    {option.summary}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {tailnetOptions.length === 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-amber-700">
+              <span>
+                {tailnetOptionsError ||
+                  "Loading networking choices from the Openbase CLI…"}
+              </span>
+              {tailnetOptionsError && (
+                <button
+                  className="font-medium underline underline-offset-2"
+                  onClick={onRefreshTailnetOptions}
+                  type="button"
+                >
+                  Retry networking choices
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -18,6 +18,8 @@ jobs:
   rebuild-linux:
     name: rebuild linux
     runs-on: ubuntu-latest
+    env:
+      VITE_AMPLITUDE_API_KEY: ${{ vars.OPENBASE_AMPLITUDE_API_KEY }}
 
     steps:
       - name: Checkout desktop
@@ -153,6 +155,7 @@ jobs:
       APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
       APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
       APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      VITE_AMPLITUDE_API_KEY: ${{ vars.OPENBASE_AMPLITUDE_API_KEY }}
 
     steps:
       - name: Checkout desktop
@@ -279,6 +282,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+
       - name: Set up pnpm
         run: |
           corepack enable
@@ -307,12 +316,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile --shamefully-hoist
 
-      - name: Install LiveKit server
+      - name: Install macOS release dependencies
         run: |
           brew update
-          brew install imagemagick livekit
+          brew install imagemagick livekit xcodegen
           livekit_server="$(command -v livekit-server)"
           "$livekit_server" --version
+          xcodegen --version
           echo "LIVEKIT_SERVER_BIN=${livekit_server}" >> "$GITHUB_ENV"
 
       - name: Import Apple signing and notarization credentials

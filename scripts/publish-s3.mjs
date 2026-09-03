@@ -131,3 +131,24 @@ for (const fileName of updateFeedFilesByOs[baseOs] ?? []) {
   }
   upload(filePath, fileName, "public, max-age=300");
 }
+
+// Publish the signed netmesh companion so public desktop checkouts (which
+// have no netmesh-macos source) can stage it prebuilt — see
+// stage-netmesh-companion.mjs. macOS only; ditto preserves the signature.
+if (baseOs === "mac") {
+  const stagedCompanion = path.join(
+    repoRoot,
+    "companion-build",
+    "OpenbaseNetmeshCompanion.app",
+  );
+  if (existsSync(stagedCompanion)) {
+    const companionZipName = "OpenbaseNetmeshCompanion-latest-arm64.zip";
+    const companionZipPath = path.join(releaseDir, companionZipName);
+    run("ditto", ["-c", "-k", "--keepParent", stagedCompanion, companionZipPath]);
+    upload(companionZipPath, companionZipName, "public, max-age=300");
+  } else {
+    console.warn(
+      "[publish-s3] no staged netmesh companion to publish (companion-build missing)",
+    );
+  }
+}

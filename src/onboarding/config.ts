@@ -27,7 +27,11 @@ export const setupCommandText = (
   `${BASE_SETUP_COMMAND} --backend ${backend} --audio-provider ${audioProvider}${
     shareAgentConfig ? ` ${shareConfigFlag(backend)}` : ""
   }${fastMode ? "" : " --no-fast-mode"}`;
-export const REQUIRED_PREREQUISITE_IDS = ["platform", "openbase-coder", "tailscale"];
+export const REQUIRED_PREREQUISITE_IDS = [
+  "platform",
+  "openbase-coder",
+  "private-network",
+];
 export const MAX_TERMINAL_LINES = 1000;
 // App Store listing is TestFlight-only for now; openbase.cloud redirects there.
 export const MOBILE_APP_DOWNLOAD_URL = "https://openbase.cloud/ios";

@@ -1,11 +1,16 @@
 {
   "setup": {
-    "args": ["setup", "--json-progress"],
+    "args": [
+      "setup",
+      "--json-progress"
+    ],
     "label": "setup",
     "needsCli": true
   },
   "doctor": {
-    "args": ["doctor"],
+    "args": [
+      "doctor"
+    ],
     "label": "doctor",
     "needsCli": true
   },
@@ -14,33 +19,57 @@
     "label": "activate bundled Openbase CLI"
   },
   "startBackend": {
-    "args": ["services", "start"],
+    "args": [
+      "services",
+      "start"
+    ],
     "label": "services start",
     "needsCli": true
   },
   "login": {
-    "args": ["login"],
+    "args": [
+      "login"
+    ],
     "label": "login",
     "needsCli": true
   },
   "claudeLogin": {
-    "args": ["claude", "login"],
+    "args": [
+      "claude",
+      "login"
+    ],
     "label": "claude login",
     "needsCli": true
   },
   "restartBackend": {
-    "args": ["restart"],
+    "args": [
+      "restart"
+    ],
     "label": "services restart",
     "needsCli": true
   },
   "selfUpdate": {
-    "args": ["self-update", "--json"],
+    "args": [
+      "self-update",
+      "--json"
+    ],
     "label": "self-update",
     "needsCli": true
   },
   "onboardingReport": {
-    "args": ["onboarding", "report"],
+    "args": [
+      "onboarding",
+      "report"
+    ],
     "label": "onboarding report",
+    "needsCli": true
+  },
+  "tailnetSetProvider": {
+    "args": [
+      "tailnet",
+      "set-provider"
+    ],
+    "label": "tailnet set-provider",
     "needsCli": true
   }
 }

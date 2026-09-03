@@ -1,35 +1,44 @@
 import type { Prerequisite, TailscaleIdentityStatus } from "./types";
 
+export type TailnetProvider = "tailscale" | "netmesh" | "netmesh-tsnet";
+
 export function applyTailscaleConnectionPrerequisite(
   prerequisites: Prerequisite[],
-  platform: string | undefined,
-  identity: TailscaleIdentityStatus | null,
+  _platform: string | undefined,
+  _identity: TailscaleIdentityStatus | null,
+  tailnetProvider: TailnetProvider = "tailscale",
 ): Prerequisite[] {
-  if (platform !== "darwin" && platform !== "linux") {
-    return prerequisites;
+  // Electron onboarding deliberately does not offer the third-party Tailscale
+  // app transport. The compatibility provider id can still be present on an
+  // older install, but setup stays blocked until the user chooses Openbase VPN
+  // or Openbase Direct.
+  if (tailnetProvider === "tailscale") {
+    return prerequisites.map((item) =>
+      item.id === "private-network"
+        ? {
+            ...item,
+            action: undefined,
+            detail: "Choose Openbase VPN or Openbase Direct before setup.",
+            label: "Private networking",
+            ok: false,
+          }
+        : item,
+    );
   }
 
   return prerequisites.map((item) => {
-    if (item.id !== "tailscale" || !item.ok) {
+    if (item.id !== "private-network") {
       return item;
     }
-
-    if (identity?.connected) {
-      const name = identity.dnsName || identity.hostName || identity.ip;
-      return {
-        ...item,
-        detail: name ? `Connected to Tailscale as ${name}.` : "Connected to Tailscale.",
-      };
-    }
-
     return {
       ...item,
-      action: platform === "linux" ? "connect-tailscale" : "open-tailscale",
+      action: undefined,
       detail:
-        platform === "linux"
-          ? "Tailscale is installed but not connected. Connect here before setup so Tailscale Serve can be configured."
-          : "Tailscale is installed but not connected. Open Tailscale and sign in before setup so Tailscale Serve can be configured.",
-      ok: false,
+        tailnetProvider === "netmesh"
+          ? "Openbase VPN selected. No Tailscale app or Tailscale account is used."
+          : "Openbase Direct selected. This embedded connection does not install a VPN.",
+      label: "Private networking",
+      ok: true,
     };
   });
 }
