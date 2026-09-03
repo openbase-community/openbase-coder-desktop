@@ -54,6 +54,9 @@ function downloadPrebuiltCompanion() {
 const netmeshDirCandidates = [
   process.env.OPENBASE_NETMESH_MACOS_DIR,
   path.resolve(repoRoot, "netmesh-macos"),
+  // Workspace sibling checkout (the internal install set clones the private
+  // repo next to this one); public checkouts fall through to the prebuilt.
+  path.resolve(repoRoot, "..", "netmesh-macos"),
 ].filter(Boolean);
 const netmeshDir = netmeshDirCandidates.find((candidate) =>
   existsSync(path.join(candidate, "project.yml")),

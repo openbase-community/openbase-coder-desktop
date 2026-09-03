@@ -33,7 +33,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "generate-types": "npx openapi-typescript http://localhost/api/schema -o ./src/types/models.d.ts --root-types --root-types-no-schema-prefix",
-    "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs"
+    "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "main": "electron/main.cjs",
   "build": {
