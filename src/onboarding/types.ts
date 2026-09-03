@@ -231,6 +231,18 @@ export type InstallerApi = {
     ok: boolean;
     self?: CliTailscaleSelf | null;
   }>;
+  /** This machine's materialized tailnet transport from the CLI env file. */
+  tailnetProvider(): Promise<{
+    error?: string;
+    ok: boolean;
+    provider: TailnetProviderChoice;
+    options?: TailnetExperience[];
+  }>;
+  /** Netmesh VPN companion (macOS): the embedded full-device VPN driver. */
+  netmeshStatus(): Promise<NetmeshCompanionStatus>;
+  netmeshRegister(): Promise<NetmeshCompanionStatus>;
+  netmeshConnect(): Promise<NetmeshCompanionStatus>;
+  netmeshDisconnect(): Promise<NetmeshCompanionStatus>;
   connectLinuxTailscale(): Promise<{
     authUrlOpened?: boolean;
     error?: string;
@@ -270,12 +282,47 @@ export type OnboardingPage =
   | "pairing"
   | "verify";
 
+export type TailnetProviderChoice = "tailscale" | "netmesh" | "netmesh-tsnet";
+
+export type TailnetExperience = {
+  browser_site_access: boolean;
+  electron_onboarding: boolean;
+  electron_platforms: string[];
+  name: string;
+  provider: TailnetProviderChoice;
+  recommended: boolean;
+  requires_vpn: boolean;
+  summary: string;
+};
+
+// Response shape of the netmesh companion IPC calls: SMAppService state plus
+// the engine status when the daemon is reachable.
+export type NetmeshCompanionStatus = {
+  ok: boolean;
+  available?: boolean;
+  helper:
+    | "enabled"
+    | "requiresApproval"
+    | "notRegistered"
+    | "notFound"
+    | "unavailable"
+    | "unknown";
+  backendState?: string;
+  selfIP?: string;
+  dnsName?: string;
+  error?: string;
+};
+
 export type StartCommandOptions = {
   audioProvider?: AudioProviderChoice;
   backend?: BackendChoice;
   fastMode?: boolean;
   linkClaudeConfig?: boolean;
   linkCodexConfig?: boolean;
+  /** tailnetSetProvider command: which transport to switch this machine to. */
+  provider?: TailnetProviderChoice;
+  /** setup command: initial tailnet transport for a fresh env file. */
+  tailnetProvider?: TailnetProviderChoice;
 };
 
 export type StartCommand = (

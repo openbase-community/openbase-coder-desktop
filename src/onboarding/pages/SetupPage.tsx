@@ -27,6 +27,7 @@ import type {
   InstallerCommand,
   SetupSteps,
   StartCommand,
+  TailnetProviderChoice,
 } from "../types";
 
 export function SetupPage({
@@ -44,6 +45,7 @@ export function SetupPage({
   selectedBackend,
   setupSteps,
   setupSucceeded,
+  tailnetProvider,
 }: {
   canContinue: boolean;
   canRunSetup: boolean;
@@ -60,6 +62,7 @@ export function SetupPage({
   setSelectedBackend: Dispatch<SetStateAction<BackendChoice>>;
   setupSteps: SetupSteps;
   setupSucceeded: boolean;
+  tailnetProvider: TailnetProviderChoice;
 }) {
   const [showSetupWarning, setShowSetupWarning] = useState(false);
   const [showSetupHelp, setShowSetupHelp] = useState(false);
@@ -78,12 +81,12 @@ export function SetupPage({
     useExistingBackend && selectedBackend !== NORMAL_ONBOARDING_BACKEND
       ? selectedBackend
       : NORMAL_ONBOARDING_BACKEND;
-  const setupCommand = setupCommandText(
+  const setupCommand = `${setupCommandText(
     setupBackend,
     NORMAL_ONBOARDING_AUDIO_PROVIDER,
     false,
     true,
-  );
+  )} --tailnet-provider ${tailnetProvider}`;
   const setupHelpAgentCommand = setupBackend === "codex" ? "codex" : "claude";
   const setupHelpPrompt = `We are trying to run \`${setupCommand}\` to install openbase but it is failing. Debug and fix so that the command runs, and then we will return to the app to continue with the login step.`;
   const setupHelpCommand = `cd ~/.openbase && ${setupHelpAgentCommand} ${shellQuote(
@@ -99,6 +102,7 @@ export function SetupPage({
       fastMode: true,
       linkClaudeConfig: false,
       linkCodexConfig: false,
+      tailnetProvider,
     });
   };
   const chooseExistingBackend = (enabled: boolean) => {

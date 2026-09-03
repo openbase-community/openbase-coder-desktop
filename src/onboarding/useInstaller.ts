@@ -97,14 +97,13 @@ export function useInstaller(
             setupResultSeenRef.current = true;
             const setupOk = Boolean(
               progressEvent.ok &&
-                progressEvent.cli_configured &&
-                progressEvent.tailscale_serve_healthy,
+                progressEvent.cli_configured,
             );
             setSetupCompleted(setupOk);
             if (!setupOk) {
               setCommandError(
                 progressEvent.tailscale_serve_healthy === false
-                  ? "Setup installed the local services, but Tailscale Serve is not ready. Install and connect Tailscale, then run setup again."
+                  ? "Setup installed the local services. Sign in next, then finish connecting Openbase VPN or Openbase Direct during pairing."
                   : "Setup did not complete all required configuration.",
               );
             }
@@ -133,6 +132,13 @@ export function useInstaller(
       ].slice(-MAX_TERMINAL_LINES));
       if (event.commandId === "login") {
         onLoginExit();
+      }
+      if (event.commandId === "tailnetSetProvider") {
+        // A provider command can connect locally even when account sync fails.
+        // Always refresh both sides so the pairing page can show the true state
+        // and retain its independently retryable registration action.
+        void refreshCliOnboardingStatus();
+        void refreshCloudState();
       }
       if (event.code === 0) {
         if (event.commandId === "installCli") {

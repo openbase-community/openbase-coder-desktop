@@ -29,7 +29,7 @@ export function WelcomePage({ onContinue }: { onContinue: () => void }) {
       </FadeUp>
       <FadeUp delay={0.55}>
         <div className="mt-10 flex max-w-lg flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          {["Install the CLI", "Choose your coding agent", "Run setup", "Sign in to Openbase", "Link your iPhone", "Pair over Tailscale"].map(
+          {["Install the CLI", "Choose your coding agent", "Run setup", "Sign in to Openbase", "Link your iPhone", "Pair privately"].map(
             (item) => (
               <div className="flex items-center gap-2 text-xs text-zinc-400" key={item}>
                 <Circle aria-hidden className="h-1.5 w-1.5 fill-zinc-300 text-zinc-300" />

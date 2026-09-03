@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveCloudPairingFacts } from "./cloudPairing";
+import {
+  deriveCloudPairingFacts,
+  localBackendReadyForOnboarding,
+  privateNetworkPairingReady,
+} from "./cloudPairing";
 import type { CloudOnboardingState } from "./types";
 
 describe("deriveCloudPairingFacts", () => {
@@ -18,7 +22,7 @@ describe("deriveCloudPairingFacts", () => {
       desktopCloudRegistered: true,
       desktopOnTailscale: true,
       diagnosticMessages: [
-        "The iPhone is registered, but it has not reported a Tailscale address.",
+        "The iPhone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
       mobileOnTailscale: false,
@@ -46,7 +50,7 @@ describe("deriveCloudPairingFacts", () => {
       desktopCloudRegistered: true,
       desktopOnTailscale: true,
       diagnosticMessages: [
-        "The iPhone is registered, but it has not reported a Tailscale address.",
+        "The iPhone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
       mobileOnTailscale: false,
@@ -65,7 +69,7 @@ describe("deriveCloudPairingFacts", () => {
     };
 
     expect(deriveCloudPairingFacts(state).diagnosticMessages).toEqual([
-      "This Mac and iPhone appear to be signed into different Tailscale tailnets.",
+      "This Mac and iPhone appear to be on different private networks.",
     ]);
   });
 
@@ -97,5 +101,22 @@ describe("deriveCloudPairingFacts", () => {
     expect(deriveCloudPairingFacts(state).diagnosticMessages).toEqual([
       "This Mac has not registered with Openbase Cloud yet.",
     ]);
+  });
+});
+
+describe("privateNetworkPairingReady", () => {
+  it("requires both cloud rendezvous and healthy local routes", () => {
+    expect(privateNetworkPairingReady(true, true)).toBe(true);
+    expect(privateNetworkPairingReady(true, false)).toBe(false);
+    expect(privateNetworkPairingReady(true, undefined)).toBe(false);
+    expect(privateNetworkPairingReady(false, true)).toBe(false);
+  });
+});
+
+describe("localBackendReadyForOnboarding", () => {
+  it("keeps durable backend readiness independent of deferred network routes", () => {
+    expect(localBackendReadyForOnboarding("ready")).toBe(true);
+    expect(localBackendReadyForOnboarding("checking")).toBe(false);
+    expect(localBackendReadyForOnboarding("error")).toBe(false);
   });
 });

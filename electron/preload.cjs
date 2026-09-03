@@ -55,6 +55,9 @@ function sendRendererLog(level, payload) {
 const backendArg = process.argv.find((arg) =>
   arg.startsWith("--openbase-backend-base-url=")
 );
+const developerDashboardOnly = process.argv.includes(
+  "--openbase-developer-dashboard-only=1",
+);
 
 // main.cjs always supplies --openbase-backend-base-url (defaulted from
 // electron/runtime-defaults.json, which the sandboxed preload cannot
@@ -66,12 +69,19 @@ const backendBaseUrl = backendArg
 
 contextBridge.exposeInMainWorld("__OPENBASE_RUNTIME_CONFIG__", {
   backendBaseUrl,
+  developerDashboardOnly,
   shell: "electron",
 });
 
 contextBridge.exposeInMainWorld("__OPENBASE_SHELL__", {
   openExternal(url) {
     return ipcRenderer.invoke("openbase:shell:open-external", url);
+  },
+});
+
+contextBridge.exposeInMainWorld("__openbaseNativeAuth", {
+  getToken() {
+    return ipcRenderer.invoke("openbase:auth:local-api-token");
   },
 });
 
@@ -87,7 +97,7 @@ contextBridge.exposeInMainWorld("__OPENBASE_LIVEKIT_COMPANION__", {
   },
 });
 
-contextBridge.exposeInMainWorld("__OPENBASE_INSTALLER__", {
+const installerApi = {
   platform: process.platform,
   check() {
     return ipcRenderer.invoke("openbase:installer:check");
@@ -107,6 +117,21 @@ contextBridge.exposeInMainWorld("__OPENBASE_INSTALLER__", {
   tailscaleIdentity() {
     return ipcRenderer.invoke("openbase:onboarding:tailscale-identity");
   },
+  tailnetProvider() {
+    return ipcRenderer.invoke("openbase:tailnet:provider");
+  },
+  netmeshStatus() {
+    return ipcRenderer.invoke("openbase:netmesh:status");
+  },
+  netmeshRegister() {
+    return ipcRenderer.invoke("openbase:netmesh:register");
+  },
+  netmeshConnect() {
+    return ipcRenderer.invoke("openbase:netmesh:connect");
+  },
+  netmeshDisconnect() {
+    return ipcRenderer.invoke("openbase:netmesh:disconnect");
+  },
   connectLinuxTailscale() {
     return ipcRenderer.invoke("openbase:onboarding:linux-tailscale-connect");
   },
@@ -125,7 +150,14 @@ contextBridge.exposeInMainWorld("__OPENBASE_INSTALLER__", {
       ipcRenderer.removeListener("openbase:installer:event", listener);
     };
   },
-});
+};
+
+// A source-workspace developer launch is a dashboard/status surface only.
+// Keeping the installer bridge out of that renderer makes it impossible for
+// the Electron setup wizard to compete with ./scripts/setup.
+if (!developerDashboardOnly) {
+  contextBridge.exposeInMainWorld("__OPENBASE_INSTALLER__", installerApi);
+}
 
 contextBridge.exposeInMainWorld("__OPENBASE_APP_UPDATES__", {
   check() {
@@ -196,6 +228,7 @@ window.addEventListener("unhandledrejection", (event) => {
 
 sendRendererLog("info", {
   backendBaseUrl,
+  developerDashboardOnly,
   shell: "electron",
   type: "preload-ready",
 });

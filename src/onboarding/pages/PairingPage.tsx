@@ -1,11 +1,16 @@
-import { ArrowRight, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 
+import { NetmeshVpnCard } from "../components/NetmeshVpnCard";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { StatusIcon } from "../components/StatusIcon";
 import { TerminalOutput } from "../components/TerminalOutput";
 import { PulsingDot } from "../motion";
-import type { InstallerCommand, TailscaleIdentityStatus } from "../types";
+import type {
+  InstallerCommand,
+  TailnetProviderChoice,
+  TailscaleIdentityStatus,
+} from "../types";
 
 export function PairingPage({
   cloudStateError,
@@ -17,13 +22,15 @@ export function PairingPage({
   macAuthenticated,
   mobileAuthenticated,
   mobileOnTailscale,
+  networkConnecting,
+  onConnectNetwork,
   onContinue,
-  onOpenTailscale,
   onRefreshTailscale,
   pairingDiagnosticMessages,
   registrationRunning,
   tailscaleIdentity,
   tailscalePaired,
+  tailnetProvider,
 }: {
   cloudStateError: string | null;
   commandError: string | null;
@@ -34,13 +41,15 @@ export function PairingPage({
   macAuthenticated: boolean;
   mobileAuthenticated: boolean;
   mobileOnTailscale: boolean;
+  networkConnecting: boolean;
+  onConnectNetwork: () => void;
   onContinue: () => void;
-  onOpenTailscale: () => void;
   onRefreshTailscale: () => void;
   pairingDiagnosticMessages: string[];
   registrationRunning: boolean;
   tailscaleIdentity: TailscaleIdentityStatus | null;
   tailscalePaired: boolean;
+  tailnetProvider: TailnetProviderChoice;
 }) {
   const tailscaleKnown = tailscaleIdentity !== null;
   const tailscaleInstalled = tailscaleIdentity?.installed === true;
@@ -51,7 +60,7 @@ export function PairingPage({
     tailscaleIdentity?.hostName ||
     tailscaleIdentity?.ip ||
     tailscaleIdentity?.error ||
-    "Checking Tailscale...";
+    "Checking private network...";
   const installationLabel = !tailscaleKnown
     ? "Checking"
     : tailscaleInstalled
@@ -70,14 +79,14 @@ export function PairingPage({
         : !macAuthenticated
           ? "Waiting for sign-in"
           : !tailscaleConnected
-            ? "Waiting for Tailscale"
+            ? "Waiting for private network"
             : "Waiting to register";
 
   return (
     <PageShell
       eyebrow="Step 8"
-      heading="Pair your devices over Tailscale"
-      support="Tailscale connects your phone and this Mac privately. Sign in to the same tailnet on both devices, then register this Mac so your phone can find it."
+      heading="Pair your devices privately"
+      support="Openbase connects this Mac and your phone through the networking option you selected, then registers their private addresses so they can find each other."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -85,11 +94,12 @@ export function PairingPage({
             <div className="flex items-start justify-between gap-3 px-4 py-4">
               <div className="min-w-0">
                 <div className="text-sm font-medium text-zinc-950">
-                  1. Install Tailscale on this Mac
+                  1. Connect this Mac
                 </div>
                 <div className="mt-1 text-xs leading-5 text-zinc-600">
-                  Open Tailscale, or install it if it is not on this Mac yet,
-                  and sign in with the same tailnet you use on your phone.
+                  {tailnetProvider === "netmesh"
+                    ? "Use the bundled Openbase VPN. It connects through Openbase Netmesh and does not need a Tailscale app or account."
+                    : "Use Openbase Direct when this environment cannot install a VPN. It carries Openbase app traffic through an embedded connection."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600">
                   <span className="inline-flex items-center gap-1.5">
@@ -102,18 +112,38 @@ export function PairingPage({
                   </span>
                 </div>
               </div>
-              <button
-                className="inline-flex h-8 shrink-0 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-900 hover:bg-zinc-50"
-                onClick={onOpenTailscale}
-                type="button"
-              >
-                <ExternalLink aria-hidden className="h-3.5 w-3.5" />
-                Open Tailscale
-              </button>
+              {tailnetProvider === "netmesh-tsnet" && !tailscaleConnected && (
+                <PrimaryButton disabled={networkConnecting} onClick={onConnectNetwork}>
+                  {networkConnecting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
+                  Connect Direct
+                </PrimaryButton>
+              )}
             </div>
+            {tailnetProvider === "netmesh" && (
+              <div className="px-4 pb-4">
+                <NetmeshVpnCard
+                  connecting={networkConnecting}
+                  onConnect={onConnectNetwork}
+                />
+              </div>
+            )}
+            {tailscaleConnected && !tailscalePaired && (
+              <div className="px-4 pb-4">
+                <PrimaryButton disabled={networkConnecting} onClick={onConnectNetwork}>
+                  {networkConnecting && (
+                    <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                  )}
+                  Retry network registration
+                </PrimaryButton>
+                <div className="mt-1 text-xs text-zinc-600">
+                  Re-applies the selected provider, private routes, and Openbase
+                  account registration without rerunning setup.
+                </div>
+              </div>
+            )}
             <div className="px-4 py-4">
               <div className="text-sm font-medium text-zinc-950">
-                2. Install Tailscale on your iPhone
+                2. Open Openbase on your iPhone
               </div>
               <div className="mt-1 text-xs leading-5 text-zinc-600">
                 The Openbase iOS app walks you through this and registers your
@@ -126,8 +156,8 @@ export function PairingPage({
                   3. Register this Mac automatically
                 </div>
                 <div className="mt-1 text-xs leading-5 text-zinc-600">
-                  Once this Mac is signed in and connected to Tailscale, the
-                  desktop app shares its Tailscale address with Openbase so your
+                  Once this Mac is signed in and privately connected, the
+                  desktop app shares its private address with Openbase so your
                   phone can find it. Keep this Mac awake while pairing if the
                   laptop lid might close or the display may sleep.
                 </div>
@@ -150,7 +180,7 @@ export function PairingPage({
 
           {tailscalePaired ? (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              This Mac is registered and both devices are paired over Tailscale.
+              This Mac is registered and both devices are privately paired.
               Continue to verify.
             </div>
           ) : pairingDiagnosticMessages.length > 0 ? (
@@ -170,8 +200,8 @@ export function PairingPage({
           )}
           {tailscaleKnown && !tailscaleConnected && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Connect Tailscale on this Mac before automatic registration can
-              report a real Tailscale address.
+              Connect the selected Openbase networking option on this Mac before
+              automatic registration can report a private address.
             </div>
           )}
           {!macAuthenticated && (
@@ -194,7 +224,7 @@ export function PairingPage({
           {registrationFailed && !registrationAuthRequired && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
               Automatic registration exited with code {lastExit?.code ?? "unknown"}.
-              Check the output, reconnect Tailscale if needed, then return to
+              Check the output, reconnect the selected private network if needed, then return to
               this step to retry.
             </div>
           )}
@@ -213,7 +243,7 @@ export function PairingPage({
             <button
               className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
               onClick={onRefreshTailscale}
-              title="Refresh local Tailscale status"
+              title="Refresh local private-network status"
               type="button"
             >
               <RefreshCw aria-hidden className="h-3.5 w-3.5" />
@@ -253,14 +283,14 @@ export function PairingPage({
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Mac on Tailscale</dt>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Mac privately connected</dt>
               <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
                 <StatusIcon ok={desktopOnTailscale} />
                 {desktopOnTailscale ? "Reported to cloud" : "Waiting"}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Phone on Tailscale</dt>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Phone privately connected</dt>
               <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
                 <StatusIcon ok={mobileOnTailscale} />
                 {mobileOnTailscale ? "Reported to cloud" : "Waiting"}

@@ -2,6 +2,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkS
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { signAppBundle } from "./macos-code-signing.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -22,33 +23,6 @@ function run(command, args) {
     cwd: repoRoot,
     stdio: "inherit",
   });
-}
-
-function output(command, args) {
-  return execFileSync(command, args, {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-}
-
-function configuredSigningIdentity() {
-  const configured = process.env.OPENBASE_CODER_COMPANION_CODESIGN_IDENTITY?.trim();
-  if (configured) return configured;
-
-  try {
-    const identities = output("security", ["find-identity", "-v", "-p", "codesigning"])
-      .split("\n")
-      .map((line) => line.match(/"([^"]+)"/)?.[1])
-      .filter(Boolean);
-    return (
-      identities.find((identity) => identity.startsWith("Developer ID Application:")) ||
-      identities.find((identity) => identity.startsWith("Apple Development:")) ||
-      null
-    );
-  } catch {
-    return null;
-  }
 }
 
 function replaceSymlink(linkPath, target) {
@@ -109,12 +83,5 @@ if (!existsSync(builtAppPath)) {
 
 cpSync(builtAppPath, stagedAppPath, { recursive: true });
 normalizeVersionedFrameworkSymlinks(stagedAppPath);
-const signingIdentity = configuredSigningIdentity();
-if (signingIdentity) {
-  run("codesign", ["--force", "--deep", "--options", "runtime", "--sign", signingIdentity, stagedAppPath]);
-  console.log(`Signed macOS companion app with ${signingIdentity}`);
-} else {
-  run("codesign", ["--force", "--deep", "--sign", "-", stagedAppPath]);
-  console.warn("Signed macOS companion app ad-hoc because no code signing identity was available.");
-}
+signAppBundle(stagedAppPath, "macOS companion app");
 console.log(`Staged macOS companion app at ${path.relative(repoRoot, stagedAppPath)}`);

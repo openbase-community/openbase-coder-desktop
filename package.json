@@ -1,7 +1,7 @@
 {
   "name": "@openbase/coder-desktop",
   "private": true,
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Desktop app for Openbase",
   "author": "Openbase",
   "type": "module",
@@ -12,6 +12,7 @@
     "companion:open": "open companion/livekit-swift-example/LiveKitExample.xcodeproj",
     "companion:build:mac": "xcodebuild -project companion/livekit-swift-example/LiveKitExample.xcodeproj -scheme SwiftSDK.1 -destination 'platform=macOS' -configuration Debug -derivedDataPath companion/livekit-swift-example/.derivedData build",
     "companion:stage:mac": "node scripts/stage-mac-companion.mjs",
+    "companion:stage:netmesh": "node scripts/stage-netmesh-companion.mjs",
     "cli:stage:mac": "node scripts/stage-openbase-coder-cli.mjs",
     "build": "vite build",
     "start": "electron .",
@@ -19,10 +20,12 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "release:clean": "node scripts/clean-release.mjs",
     "release:preflight:mac": "node scripts/check-mac-release-prereqs.mjs",
-    "dist:mac": "pnpm run release:preflight:mac && pnpm run release:clean && pnpm run icons:generate && pnpm run build && pnpm run companion:stage:mac && pnpm run cli:stage:mac && electron-builder --mac --arm64 --publish never && node scripts/build-dmg.mjs",
+    "dist:mac": "pnpm run release:preflight:mac && pnpm run release:clean && pnpm run icons:generate && pnpm run build && pnpm run companion:stage:mac && pnpm run companion:stage:netmesh && pnpm run cli:stage:mac && electron-builder --mac --arm64 --publish never && node scripts/build-dmg.mjs",
     "dist:mac:publish": "pnpm run dist:mac && node scripts/notarize-dmg.mjs && node scripts/publish-s3.mjs",
     "dist:linux": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --linux AppImage --x64 --publish never -c.extraResources=[] -c.executableName=openbase",
     "dist:linux:publish": "pnpm run dist:linux && OPENBASE_CODER_RELEASE_PREFIX=linux node scripts/publish-s3.mjs",
+    "dist:win": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --win nsis --x64 --publish never -c.extraResources=[]",
+    "dist:win:publish": "pnpm run dist:win && OPENBASE_CODER_RELEASE_PREFIX=win node scripts/publish-s3.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -30,7 +33,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "generate-types": "npx openapi-typescript http://localhost/api/schema -o ./src/types/models.d.ts --root-types --root-types-no-schema-prefix",
-    "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs"
+    "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "main": "electron/main.cjs",
   "build": {
@@ -58,6 +62,10 @@
       {
         "from": "companion-build/OpenbaseScreenShareCompanion.app",
         "to": "OpenbaseScreenShareCompanion.app"
+      },
+      {
+        "from": "companion-build/OpenbaseNetmeshCompanion.app",
+        "to": "OpenbaseNetmeshCompanion.app"
       }
     ],
     "asar": true,
@@ -76,6 +84,16 @@
       "target": [
         "zip"
       ]
+    },
+    "win": {
+      "icon": "assets/openbase-coder-icon.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
     },
     "publish": {
       "provider": "generic",
