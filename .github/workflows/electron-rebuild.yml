@@ -1,0 +1,430 @@
+name: Electron App Rebuild
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-app-rebuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild-linux:
+    name: rebuild linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout desktop
+        uses: actions/checkout@v4
+        with:
+          path: desktop
+
+      - name: Checkout coder-react
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase-coder-react
+          path: coder-react
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Checkout multi-react
+        uses: actions/checkout@v4
+        with:
+          repository: montaguegabe/multi-react
+          path: multi-react
+          ref: main
+
+      - name: Checkout boilersync-react
+        uses: actions/checkout@v4
+        with:
+          repository: montaguegabe/boilersync-react
+          path: boilersync-react
+          ref: main
+
+      - name: Create pnpm workspace
+        run: |
+          cat > package.json <<'JSON'
+          {
+            "name": "openbase-coder-desktop-ci",
+            "private": true,
+            "packageManager": "pnpm@10.18.0",
+            "pnpm": {
+              "onlyBuiltDependencies": [
+                "electron"
+              ]
+            }
+          }
+          JSON
+          cat > pnpm-workspace.yaml <<'YAML'
+          packages:
+            - "desktop"
+            - "coder-react"
+            - "multi-react"
+            - "boilersync-react"
+          YAML
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.0 --activate
+
+      - name: Prepare package node_modules directories
+        run: |
+          for package_dir in desktop coder-react multi-react boilersync-react; do
+            node_modules_dir="${package_dir}/node_modules"
+            if [ -L "$node_modules_dir" ] || { [ -e "$node_modules_dir" ] && [ ! -d "$node_modules_dir" ]; }; then
+              rm "$node_modules_dir"
+            fi
+            mkdir -p "$node_modules_dir"
+          done
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --shamefully-hoist
+
+      - name: Build workspace libraries
+        run: |
+          pnpm --filter multi-react build
+          rm -rf boilersync-react/dist
+          pnpm --dir boilersync-react exec tsc -p tsconfig.build.json
+
+      - name: Configure staging build
+        if: github.ref == 'refs/heads/staging'
+        working-directory: desktop
+        run: |
+          # Timestamped semver prerelease: every staging push is an update on
+          # the staging feed, the version visibly marks the build as staging,
+          # and the next stable bump sorts above every staging build.
+          base="$(node -p "require('./package.json').version")"
+          npm pkg set version="${base}-staging.$(date -u +%Y%m%d%H%M%S)"
+          # Point electron-updater's baked-in generic feed at the staging
+          # prefixes; ${os} is expanded by electron-builder, not the shell.
+          npm pkg set 'build.publish.url=https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${os}-staging'
+          # The -staging.* prerelease component would otherwise become the
+          # electron-builder channel name (staging-mac.yml, staging-linux.yml);
+          # the app's generic-provider updater reads latest-*.yml, and the S3
+          # prefix is what separates the channels, so pin the file name.
+          npm pkg set 'build.publish.channel=latest'
+          echo "OPENBASE_DESKTOP_ICON_VARIANT=staging" >> "$GITHUB_ENV"
+
+      - name: Rebuild Linux AppImage
+        working-directory: desktop
+        run: |
+          pnpm run release:clean
+          pnpm run build
+          pnpm exec electron-builder --linux AppImage --x64 --publish never -c.extraResources=[] -c.executableName=openbase
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbase-linux-appimage
+          path: desktop/release/*.AppImage
+          if-no-files-found: error
+
+      - name: Publish Linux AppImage to S3
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+        working-directory: desktop
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          OPENBASE_CODER_RELEASE_PREFIX: ${{ github.ref == 'refs/heads/staging' && 'linux-staging' || 'linux' }}
+        run: node scripts/publish-s3.mjs
+
+  rebuild-macos:
+    name: rebuild macOS
+    runs-on: macos-14
+    timeout-minutes: 75
+    env:
+      APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
+      APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      APPLE_CODESIGN_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CODESIGN_KEYCHAIN_PASSWORD }}
+      APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+
+    steps:
+      - name: Checkout desktop
+        uses: actions/checkout@v4
+        with:
+          path: desktop
+
+      - name: Checkout CLI
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase
+          path: cli
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Checkout console
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase-coder-console
+          path: console
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Checkout coder-react
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase-coder-react
+          path: coder-react
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Checkout multi-react
+        uses: actions/checkout@v4
+        with:
+          repository: montaguegabe/multi-react
+          path: multi-react
+          ref: main
+
+      - name: Checkout boilersync-react
+        uses: actions/checkout@v4
+        with:
+          repository: montaguegabe/boilersync-react
+          path: boilersync-react
+          ref: main
+
+      - name: Checkout skills
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase-coder-skills
+          path: skills
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Checkout workspace instructions
+        uses: actions/checkout@v4
+        with:
+          repository: openbase-community/openbase-coder-workspace
+          path: workspace-seed
+          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+
+      - name: Prepare public build workspace
+        run: |
+          cp -R workspace-seed/instructions instructions
+          cat > package.json <<'JSON'
+          {
+            "name": "openbase-coder-desktop-ci",
+            "private": true,
+            "packageManager": "pnpm@10.18.0",
+            "pnpm": {
+              "onlyBuiltDependencies": [
+                "electron"
+              ]
+            }
+          }
+          JSON
+          cat > pnpm-workspace.yaml <<'YAML'
+          packages:
+            - "desktop"
+            - "console"
+            - "coder-react"
+            - "multi-react"
+            - "boilersync-react"
+          YAML
+
+      - name: Configure staging build
+        if: github.ref == 'refs/heads/staging'
+        working-directory: desktop
+        run: |
+          # Timestamped semver prerelease: every staging push is an update on
+          # the staging feed, the version visibly marks the build as staging,
+          # and the next stable bump sorts above every staging build.
+          base="$(node -p "require('./package.json').version")"
+          npm pkg set version="${base}-staging.$(date -u +%Y%m%d%H%M%S)"
+          # Point electron-updater's baked-in generic feed at the staging
+          # prefixes; ${os} is expanded by electron-builder, not the shell.
+          npm pkg set 'build.publish.url=https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${os}-staging'
+          # The -staging.* prerelease component would otherwise become the
+          # electron-builder channel name (staging-mac.yml, staging-linux.yml);
+          # the app's generic-provider updater reads latest-*.yml, and the S3
+          # prefix is what separates the channels, so pin the file name.
+          npm pkg set 'build.publish.channel=latest'
+          echo "OPENBASE_DESKTOP_ICON_VARIANT=staging" >> "$GITHUB_ENV"
+
+      - name: Resolve release metadata
+        id: release
+        run: |
+          version="$(node -p "require('./desktop/package.json').version")"
+          case "$(uname -m)" in
+            arm64) target="aarch64-apple-darwin" ;;
+            x86_64) target="x86_64-apple-darwin" ;;
+            *) echo "Unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          {
+            echo "version=${version}"
+            echo "target=${target}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install standalone Python
+        run: |
+          uv python install --managed-python 3.12
+          uv python find --managed-python 3.12
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.0 --activate
+
+      - name: Prepare package node_modules directories
+        run: |
+          for package_dir in desktop console coder-react multi-react boilersync-react; do
+            node_modules_dir="${package_dir}/node_modules"
+            if [ -L "$node_modules_dir" ] || { [ -e "$node_modules_dir" ] && [ ! -d "$node_modules_dir" ]; }; then
+              rm "$node_modules_dir"
+            fi
+            mkdir -p "$node_modules_dir"
+          done
+
+      - name: Select Swift 6 Xcode
+        run: |
+          for candidate in /Applications/Xcode_16*.app /Applications/Xcode.app; do
+            if [ -d "$candidate" ]; then
+              sudo xcode-select -s "$candidate/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --shamefully-hoist
+
+      - name: Install LiveKit server
+        run: |
+          brew update
+          brew install imagemagick livekit
+          livekit_server="$(command -v livekit-server)"
+          "$livekit_server" --version
+          echo "LIVEKIT_SERVER_BIN=${livekit_server}" >> "$GITHUB_ENV"
+
+      - name: Import Apple signing and notarization credentials
+        run: |
+          missing=0
+          for name in \
+            APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64 \
+            APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD \
+            APPLE_NOTARY_KEY \
+            APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: ${name}" >&2
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          keychain_password="${APPLE_CODESIGN_KEYCHAIN_PASSWORD:-$(uuidgen)}"
+          keychain="$RUNNER_TEMP/openbase-codesign.keychain-db"
+          cert_path="$RUNNER_TEMP/developer-id-application.p12"
+          notary_key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+
+          echo "$APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64" | base64 --decode > "$cert_path"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$cert_path" \
+            -k "$keychain" \
+            -P "$APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+
+          printf '%s' "$APPLE_NOTARY_KEY" > "$notary_key_path"
+          chmod 600 "$notary_key_path"
+
+          {
+            echo "CSC_LINK=${cert_path}"
+            echo "CSC_KEY_PASSWORD=${APPLE_DEVELOPER_ID_APPLICATION_CERT_PASSWORD}"
+            echo "CSC_NAME=${APPLE_CODESIGN_IDENTITY:-Developer ID Application}"
+            echo "APPLE_API_KEY=${notary_key_path}"
+            echo "APPLE_API_KEY_ID=${APPLE_NOTARY_KEY_ID}"
+            echo "APPLE_API_ISSUER=${APPLE_NOTARY_ISSUER_ID}"
+            echo "OPENBASE_CODER_COMPANION_CODESIGN_IDENTITY=${APPLE_CODESIGN_IDENTITY:-Developer ID Application}"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate Apple notarization credentials
+        run: |
+          xcrun notarytool history \
+            --key "$APPLE_API_KEY" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --output-format json >/dev/null
+
+      - name: Download released CLI package seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Seed the app with the latest RELEASED CLI package — never a
+          # from-source rebuild. A rebuild would carry unreleased main
+          # commits, mislabel the package with the desktop version, and
+          # need its own signing; the release artifact is already signed,
+          # correctly versioned, and byte-identical to what self-update
+          # serves.
+          package_dir="$RUNNER_TEMP/openbase-coder-package-${{ steps.release.outputs.target }}"
+          if [ "${GITHUB_REF_NAME}" = "staging" ]; then
+            # Staging desktop seeds the newest staging-channel CLI release
+            # (.dev tags); releases/latest only ever serves stable.
+            tag="$(gh api 'repos/openbase-community/openbase/releases?per_page=15' \
+              --jq '[.[] | select(.draft | not) | select(.tag_name | contains(".dev"))][0].tag_name')"
+            if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+              echo "::error::No staging CLI release found to seed the staging desktop build." >&2
+              exit 1
+            fi
+            gh release download "$tag" --repo openbase-community/openbase \
+              --pattern "openbase-coder-package-${{ steps.release.outputs.target }}.tar.gz" \
+              --dir "$RUNNER_TEMP"
+          else
+            gh release download --repo openbase-community/openbase \
+              --pattern "openbase-coder-package-${{ steps.release.outputs.target }}.tar.gz" \
+              --dir "$RUNNER_TEMP"
+          fi
+          mkdir -p "$package_dir"
+          tar -xzf "$RUNNER_TEMP/openbase-coder-package-${{ steps.release.outputs.target }}.tar.gz" \
+            -C "$package_dir"
+          echo "OPENBASE_CODER_DESKTOP_CLI_PACKAGE_DIR=${package_dir}" >> "$GITHUB_ENV"
+
+      - name: Build, sign, and notarize macOS DMG
+        working-directory: desktop
+        run: |
+          pnpm run dist:mac
+          node scripts/notarize-dmg.mjs
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbase-macos-dmg
+          path: desktop/release/*.dmg
+          if-no-files-found: error
+
+      - name: Publish macOS DMG to S3
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+        working-directory: desktop
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          OPENBASE_CODER_RELEASE_PREFIX: ${{ github.ref == 'refs/heads/staging' && 'mac-staging' || 'mac' }}
+        run: node scripts/publish-s3.mjs

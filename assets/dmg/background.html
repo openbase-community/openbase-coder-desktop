@@ -1,0 +1,112 @@
+<!doctype html>
+<!--
+  DMG background source of truth. Rendered to 1x/2x PNGs and a HiDPI TIFF by
+  scripts/generate-dmg-background.mjs during the DMG build. The 660x400 canvas
+  and the icon anchor points must stay in sync with the Finder layout in
+  scripts/build-dmg.mjs: app icon centered at (165, 205), Applications icon
+  centered at (495, 205), icon size 128.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 660px;
+        height: 400px;
+        overflow: hidden;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+        background:
+          radial-gradient(120% 90% at 50% -10%, #ffffff 0%, #fafafa 55%, #f0f0f2 100%);
+        position: relative;
+        -webkit-font-smoothing: antialiased;
+      }
+      .brand {
+        position: absolute;
+        top: 44px;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .brand svg {
+        width: 26px;
+        height: 26px;
+      }
+      .brand span {
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #18181b;
+      }
+      .headline {
+        position: absolute;
+        top: 86px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: -0.005em;
+        color: #52525b;
+      }
+      /* Large drag arrow centered between the two icon anchors (165 -> 495),
+         clear of the 128px icons on either side. */
+      .arrow {
+        position: absolute;
+        left: 250px;
+        top: 175px;
+        width: 160px;
+        height: 60px;
+      }
+      /* Sits high enough to stay visible even though the window bounds
+         include the title bar, which crops the bottom ~28px of the canvas. */
+      .footer {
+        position: absolute;
+        bottom: 52px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 11px;
+        color: #a1a1aa;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 7C0 3.13401 3.13401 0 7 0H16V16H0V7Z" fill="#18181b" />
+        <path d="M16 16H32V25C32 28.866 28.866 32 25 32H16V16Z" fill="#18181b" />
+        <path d="M20 0H32V12L16 16L20 0Z" fill="#18181b" />
+        <path d="M0 20L16 16L12 32H0V20Z" fill="#18181b" />
+      </svg>
+      <span>Openbase</span>
+    </div>
+    <div class="headline">Drag Openbase to Applications</div>
+    <svg class="arrow" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M8 30 H118"
+        stroke="#c8c8cd"
+        stroke-width="11"
+        stroke-linecap="round"
+      />
+      <path
+        d="M112 10 L146 30 L112 50 Z"
+        fill="#c8c8cd"
+        stroke="#c8c8cd"
+        stroke-width="8"
+        stroke-linejoin="round"
+      />
+    </svg>
+    <div class="footer">Voice-first coding for your Mac</div>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "setup": {
+    "args": ["setup", "--json-progress"],
+    "label": "setup",
+    "needsCli": true
+  },
+  "doctor": {
+    "args": ["doctor"],
+    "label": "doctor",
+    "needsCli": true
+  },
+  "installCli": {
+    "internal": "activateCli",
+    "label": "activate bundled Openbase CLI"
+  },
+  "startBackend": {
+    "args": ["services", "start"],
+    "label": "services start",
+    "needsCli": true
+  },
+  "login": {
+    "args": ["login"],
+    "label": "login",
+    "needsCli": true
+  },
+  "claudeLogin": {
+    "args": ["claude", "login"],
+    "label": "claude login",
+    "needsCli": true
+  },
+  "restartBackend": {
+    "args": ["restart"],
+    "label": "services restart",
+    "needsCli": true
+  },
+  "selfUpdate": {
+    "args": ["self-update", "--json"],
+    "label": "self-update",
+    "needsCli": true
+  },
+  "onboardingReport": {
+    "args": ["onboarding", "report"],
+    "label": "onboarding report",
+    "needsCli": true
+  }
+}

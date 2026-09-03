@@ -1,0 +1,130 @@
+{
+  "name": "@openbase/coder-desktop",
+  "private": true,
+  "version": "0.1.17",
+  "description": "Desktop app for Openbase",
+  "author": "Openbase",
+  "type": "module",
+  "scripts": {
+    "dev:renderer": "vite --host --port 8081",
+    "dev:electron": "wait-on tcp:8081 && OPENBASE_CODER_DESKTOP_RENDERER_URL=http://127.0.0.1:8081 electron .",
+    "dev": "concurrently -k \"pnpm run dev:renderer\" \"pnpm run dev:electron\"",
+    "companion:open": "open companion/livekit-swift-example/LiveKitExample.xcodeproj",
+    "companion:build:mac": "xcodebuild -project companion/livekit-swift-example/LiveKitExample.xcodeproj -scheme SwiftSDK.1 -destination 'platform=macOS' -configuration Debug -derivedDataPath companion/livekit-swift-example/.derivedData build",
+    "companion:stage:mac": "node scripts/stage-mac-companion.mjs",
+    "cli:stage:mac": "node scripts/stage-openbase-coder-cli.mjs",
+    "build": "vite build",
+    "start": "electron .",
+    "build:dev": "vite build --mode development",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "release:clean": "node scripts/clean-release.mjs",
+    "release:preflight:mac": "node scripts/check-mac-release-prereqs.mjs",
+    "dist:mac": "pnpm run release:preflight:mac && pnpm run release:clean && pnpm run icons:generate && pnpm run build && pnpm run companion:stage:mac && pnpm run cli:stage:mac && electron-builder --mac --arm64 --publish never && node scripts/build-dmg.mjs",
+    "dist:mac:publish": "pnpm run dist:mac && node scripts/notarize-dmg.mjs && node scripts/publish-s3.mjs",
+    "dist:linux": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --linux AppImage --x64 --publish never -c.extraResources=[] -c.executableName=openbase",
+    "dist:linux:publish": "pnpm run dist:linux && OPENBASE_CODER_RELEASE_PREFIX=linux node scripts/publish-s3.mjs",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:electron": "node --test electron/*.node-test.cjs",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "generate-types": "npx openapi-typescript http://localhost/api/schema -o ./src/types/models.d.ts --root-types --root-types-no-schema-prefix",
+    "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "tech.openbase.coder.desktop",
+    "productName": "Openbase",
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "Openbase-${version}-${arch}.${ext}",
+    "executableName": "Openbase",
+    "files": [
+      "assets/openbase-coder-icon.icns",
+      "assets/openbase-coder-icon.png",
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!**/.git/**",
+      "!**/*.git/**"
+    ],
+    "extraResources": [
+      {
+        "from": "bundled/OpenbaseCoderCLI",
+        "to": "OpenbaseCoderCLI"
+      },
+      {
+        "from": "companion-build/OpenbaseScreenShareCompanion.app",
+        "to": "OpenbaseScreenShareCompanion.app"
+      }
+    ],
+    "asar": true,
+    "afterPack": "scripts/after-pack.cjs",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/openbase-coder-icon.icns",
+      "identity": "Developer ID Application",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Openbase uses the microphone for voice calls with the dispatcher and your coding agents."
+      },
+      "hardenedRuntime": true,
+      "notarize": false,
+      "target": [
+        "zip"
+      ]
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${os}"
+    },
+    "protocols": [
+      {
+        "name": "Openbase",
+        "schemes": [
+          "openbase-coder"
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "@openbase/coder-react": "workspace:*",
+    "@radix-ui/react-compose-refs": "1.1.2",
+    "@radix-ui/react-context": "1.1.2",
+    "@radix-ui/react-slot": "^1.1.0",
+    "electron-updater": "^6.8.9",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^0.462.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "use-sync-external-store": "1.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/node": "^22.19.19",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react-swc": "^3.11.0",
+    "@vitest/ui": "^3.2.4",
+    "autoprefixer": "^10.5.0",
+    "concurrently": "^9.2.1",
+    "electron": "^39.8.10",
+    "electron-builder": "^26.15.7",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "globals": "^15.9.0",
+    "openapi-typescript": "^7.9.1",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.1",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.3"
+  }
+}

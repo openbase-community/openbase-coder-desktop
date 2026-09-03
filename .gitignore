@@ -1,0 +1,24 @@
+.DS_Store
+.env
+.envrc
+**/.npmrc
+.vscode/
+/.idea/
+*.log
+*.tsbuildinfo
+*.swp
+*.xcodeproj
+!companion/
+!companion/livekit-swift-example/
+!companion/livekit-swift-example/LiveKitExample.xcodeproj/
+!companion/livekit-swift-example/LiveKitExample.xcodeproj/**
+companion/livekit-swift-example/.derivedData/
+/companion-build/
+/bundled/
+/dist/
+/release/
+node_modules/
+**/package-lock.json
+
+# Eslint Cache
+.eslintcache*
