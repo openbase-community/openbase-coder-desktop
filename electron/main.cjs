@@ -38,6 +38,10 @@ const APP_PACKAGE = require("../package.json");
 // installer decisions across the rebrand.
 app.setPath("userData", path.join(app.getPath("appData"), "Openbase Coder"));
 
+// Unpackaged runs inherit Electron's bundle name; the icon is set at runtime
+// below, and this at least corrects the about panel and app menus.
+app.setName("Openbase");
+
 const rendererUrl = process.env.OPENBASE_CODER_DESKTOP_RENDERER_URL;
 const backendBaseUrl =
   process.env.OPENBASE_CODER_DESKTOP_BACKEND_URL || RUNTIME_DEFAULTS.backendBaseUrl;
