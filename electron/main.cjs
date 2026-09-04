@@ -1280,7 +1280,11 @@ function createWindow() {
     minHeight: 720,
     icon: appIconPath,
     backgroundColor: "#edf4ff",
-    ...(process.platform === "darwin"
+    show: false,
+    // The developer dashboard renders the console UI, which has no title-bar
+    // inset of its own — a hidden title bar puts the traffic lights on top of
+    // the console header, so give it a normal title bar instead.
+    ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           titleBarStyle: "hiddenInset",
           trafficLightPosition: { x: 18, y: 18 },
@@ -1299,6 +1303,17 @@ function createWindow() {
     },
   });
   mainWindow = window;
+
+  // Avoid the blank-window flash: reveal only once the renderer has painted,
+  // with a fallback so a wedged renderer still surfaces a window to debug.
+  let shown = false;
+  const showWindow = () => {
+    if (shown || window.isDestroyed()) return;
+    shown = true;
+    window.show();
+  };
+  window.once("ready-to-show", showWindow);
+  setTimeout(showWindow, 10_000);
 
   window.on("closed", () => {
     if (mainWindow === window) {
@@ -1328,6 +1343,32 @@ function createWindow() {
   }
 
   window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+}
+
+// Developer installs pair the dashboard with the Swift status menu-bar UI: the
+// dashboard must never run without it (the reverse — menu bar alone — is
+// fine). Public checkouts without the private sibling build just get the
+// dashboard.
+function ensureDevMenuBarApp() {
+  if (!developerDashboardOnly || process.platform !== "darwin") return;
+  const { execFile } = require("child_process");
+  const productsDir = path.join(
+    __dirname, "..", "..", "netmesh-macos", "DerivedData", "Build", "Products",
+  );
+  const candidate = ["Release", "Debug"]
+    .map((configuration) => path.join(productsDir, configuration, "OpenbaseNetmesh.app"))
+    .find((appPath) => fs.existsSync(appPath));
+  if (!candidate) return;
+  execFile("pgrep", ["-f", "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$"], (notRunning) => {
+    if (!notRunning) return;
+    execFile("open", ["-g", candidate], (error) => {
+      if (error) {
+        mainLogger.error("dev-menu-bar-launch-failed", { message: error.message, candidate });
+      } else {
+        mainLogger.info("dev-menu-bar-launched", { candidate });
+      }
+    });
+  });
 }
 
 function registerDeepLinkProtocol() {
@@ -1374,6 +1415,7 @@ if (gotSingleInstanceLock) {
     app.dock.setIcon(appIconPath);
   }
   setupMediaPermissionHandler();
+  ensureDevMenuBarApp();
   createWindow();
   setupAppAutoUpdater();
   // Let the first window paint before possibly showing the installer

@@ -570,7 +570,6 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     return (
       <>
         <DesktopControlNotice />
-        <ProductAnalyticsPreference />
         {children}
       </>
     );
