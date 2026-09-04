@@ -55,7 +55,11 @@ try {
 }
 const developerDashboardOnly = isDeveloperDashboardOnly({
   appPackaged: app.isPackaged,
-  envValue: process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
+  // The /Applications launcher stub starts Electron through `open -a`, which
+  // cannot pass environment variables — accept the argv form too.
+  envValue: process.argv.includes("--openbase-dev-dashboard")
+    ? "1"
+    : process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
   installation: activeInstallation,
 });
 const appIconPath = path.join(__dirname, "..", "assets", "openbase-coder-icon.png");
@@ -1450,6 +1454,11 @@ if (gotSingleInstanceLock) {
   desktopControlServer = createDesktopControlServer({
     liveKitCompanion,
     logger: mainLogger,
+    onFocusRequest: () => {
+      mainLogger.info("focus-requested");
+      focusMainWindow();
+      app.focus({ steal: true });
+    },
   });
   desktopControlServer
     .start()
@@ -1485,9 +1494,15 @@ if (gotSingleInstanceLock) {
   }
 
   app.on("activate", () => {
+    mainLogger.info("app-activate", { windows: BrowserWindow.getAllWindows().length });
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      return;
     }
+    // Reopening from Finder/Spotlight/Dock must surface the existing window.
+    // steal: an unpackaged dev app doesn't reliably self-activate otherwise.
+    focusMainWindow();
+    app.focus({ steal: true });
   });
   });
 }
