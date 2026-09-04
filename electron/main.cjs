@@ -317,22 +317,27 @@ async function activateBundledCliPackageOnce() {
 
 const activateBundledCliPackage = createSingleFlight(activateBundledCliPackageOnce);
 
+// The login-shell PATH lookup costs 1-2s per call; the result cannot change
+// within a run, so resolve it once.
+let cachedDevCliPath = null;
+
 async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   let activationError = null;
   // A development installation's single source of truth is the workspace CLI
   // on PATH. Never activate the bundled package there, and don't let a stale
   // activated standalone package (whose runtime may be long gone) shadow it.
   if (developerDashboardOnly) {
+    const devDetail = "Using the development workspace openbase-coder on PATH.";
+    if (cachedDevCliPath) {
+      return { detail: devDetail, path: cachedDevCliPath, source: "path" };
+    }
     const devPathResult = IS_WINDOWS
       ? await captureSpawn("where", ["openbase-coder"])
       : await shellCapture("command -v openbase-coder");
     const devPathCli = devPathResult.stdout.trim().split(/\r?\n/)[0];
     if (devPathResult.code === 0 && devPathCli) {
-      return {
-        detail: "Using the development workspace openbase-coder on PATH.",
-        path: devPathCli,
-        source: "path",
-      };
+      cachedDevCliPath = devPathCli;
+      return { detail: devDetail, path: devPathCli, source: "path" };
     }
     activateBundled = false;
   }
@@ -861,6 +866,59 @@ ipcMain.handle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
 });
 
+// The renderer asks for the capability several times around startup (auth
+// sync + focus + visibility handlers); each uncached ask costs seconds of CLI
+// spawn. Coalesce concurrent asks, cache briefly (it only changes on
+// re-login), and prefetch from whenReady so the answer usually beats the
+// first ask.
+const LOCAL_API_TOKEN_CACHE_MS = 5 * 60 * 1000;
+let localApiTokenPromise = null;
+let localApiTokenFetchedAt = 0;
+
+function fetchLocalApiToken() {
+  if (localApiTokenPromise && Date.now() - localApiTokenFetchedAt < LOCAL_API_TOKEN_CACHE_MS) {
+    return localApiTokenPromise;
+  }
+  localApiTokenFetchedAt = Date.now();
+  const startedAt = Date.now();
+  localApiTokenPromise = (async () => {
+    // Fast path: the capability lives at ~/.openbase/local-api-token (owner
+    // 0600, >=40 chars — see the CLI's config/local_api_token.py). Only fall
+    // back to the CLI when it's absent, so it can mint/repair one.
+    try {
+      const fileToken = (
+        await fsp.readFile(path.join(OPENBASE_BASE_DIR, "local-api-token"), "utf8")
+      ).trim();
+      if (fileToken.length >= 40) {
+        return fileToken;
+      }
+    } catch {
+      // Missing file — the CLI below creates it.
+    }
+    const cli = await resolveOpenbaseCoderCli();
+    const resolvedAt = Date.now();
+    if (!cli.path) {
+      throw new Error(cli.detail);
+    }
+    const result = await runArgv(cli.path, ["auth", "print-local-api-token"]);
+    mainLogger.info("local-api-token-timing", {
+      cliResolveMs: resolvedAt - startedAt,
+      cliRunMs: Date.now() - resolvedAt,
+      cliSource: cli.source,
+    });
+    const token = result.stdout.trim();
+    if (result.code !== 0 || !token) {
+      throw new Error(result.stderr.trim() || "Could not read the local API capability.");
+    }
+    return token;
+  })();
+  localApiTokenPromise.catch(() => {
+    // Never cache a failure (CLI missing, logged out) — retry on next ask.
+    localApiTokenPromise = null;
+  });
+  return localApiTokenPromise;
+}
+
 ipcMain.handle("openbase:auth:local-api-token", async (event) => {
   const frameUrl = event.senderFrame?.url || "";
   const trusted = rendererUrl
@@ -875,16 +933,7 @@ ipcMain.handle("openbase:auth:local-api-token", async (event) => {
   if (!trusted) {
     throw new Error("Local API capability access denied for this renderer.");
   }
-  const cli = await resolveOpenbaseCoderCli();
-  if (!cli.path) {
-    throw new Error(cli.detail);
-  }
-  const result = await runArgv(cli.path, ["auth", "print-local-api-token"]);
-  const token = result.stdout.trim();
-  if (result.code !== 0 || !token) {
-    throw new Error(result.stderr.trim() || "Could not read the local API capability.");
-  }
-  return token;
+  return fetchLocalApiToken();
 });
 
 ipcMain.handle("openbase:app-update:check", async () => {
@@ -1416,6 +1465,8 @@ if (gotSingleInstanceLock) {
   }
   setupMediaPermissionHandler();
   ensureDevMenuBarApp();
+  // Warm the auth capability while the renderer is still booting.
+  fetchLocalApiToken().catch(() => {});
   createWindow();
   setupAppAutoUpdater();
   // Let the first window paint before possibly showing the installer
