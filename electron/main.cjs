@@ -1353,8 +1353,9 @@ function createWindow() {
   });
   mainWindow = window;
 
-  // Avoid the blank-window flash: reveal only once the renderer has painted,
-  // with a fallback so a wedged renderer still surfaces a window to debug.
+  // Avoid the blank-window flash: reveal once the renderer has painted.
+  // ready-to-show is unreliable for hidden windows (observed never firing on
+  // cold boots), so also show on did-finish-load and after a short fallback.
   let shown = false;
   const showWindow = () => {
     if (shown || window.isDestroyed()) return;
@@ -1362,7 +1363,8 @@ function createWindow() {
     window.show();
   };
   window.once("ready-to-show", showWindow);
-  setTimeout(showWindow, 10_000);
+  window.webContents.once("did-finish-load", showWindow);
+  setTimeout(showWindow, 2_000);
 
   window.on("closed", () => {
     if (mainWindow === window) {
