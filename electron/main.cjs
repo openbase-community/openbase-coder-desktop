@@ -319,6 +319,23 @@ const activateBundledCliPackage = createSingleFlight(activateBundledCliPackageOn
 
 async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   let activationError = null;
+  // A development installation's single source of truth is the workspace CLI
+  // on PATH. Never activate the bundled package there, and don't let a stale
+  // activated standalone package (whose runtime may be long gone) shadow it.
+  if (developerDashboardOnly) {
+    const devPathResult = IS_WINDOWS
+      ? await captureSpawn("where", ["openbase-coder"])
+      : await shellCapture("command -v openbase-coder");
+    const devPathCli = devPathResult.stdout.trim().split(/\r?\n/)[0];
+    if (devPathResult.code === 0 && devPathCli) {
+      return {
+        detail: "Using the development workspace openbase-coder on PATH.",
+        path: devPathCli,
+        source: "path",
+      };
+    }
+    activateBundled = false;
+  }
   if (activateBundled) {
     try {
       const activation = await activateBundledCliPackage();
