@@ -67,7 +67,7 @@ function sendJson(response, statusCode, payload) {
   response.end(body);
 }
 
-async function handleControlRequest({ request, response, secret, liveKitCompanion }) {
+async function handleControlRequest({ request, response, secret, liveKitCompanion, onFocusRequest }) {
   if (request.headers["x-openbase-desktop-secret"] !== secret) {
     sendJson(response, 401, { ok: false, error: "Unauthorized" });
     return;
@@ -79,6 +79,14 @@ async function handleControlRequest({ request, response, secret, liveKitCompanio
         ok: true,
         companion: await liveKitCompanion.status(),
       });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/focus") {
+      // Used by the /Applications launcher stub: it runs-and-exits on every
+      // open, and asks the live instance to surface its window here.
+      onFocusRequest?.();
+      sendJson(response, 200, { ok: true });
       return;
     }
 
@@ -122,10 +130,10 @@ async function handleControlRequest({ request, response, secret, liveKitCompanio
   }
 }
 
-function createDesktopControlServer({ liveKitCompanion, logger }) {
+function createDesktopControlServer({ liveKitCompanion, logger, onFocusRequest }) {
   const secret = crypto.randomBytes(32).toString("hex");
   const server = http.createServer((request, response) => {
-    void handleControlRequest({ request, response, secret, liveKitCompanion });
+    void handleControlRequest({ request, response, secret, liveKitCompanion, onFocusRequest });
   });
 
   async function start() {

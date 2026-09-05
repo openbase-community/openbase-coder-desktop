@@ -38,6 +38,10 @@ const APP_PACKAGE = require("../package.json");
 // installer decisions across the rebrand.
 app.setPath("userData", path.join(app.getPath("appData"), "Openbase Coder"));
 
+// Unpackaged runs inherit Electron's bundle name; the icon is set at runtime
+// below, and this at least corrects the about panel and app menus.
+app.setName("Openbase");
+
 const rendererUrl = process.env.OPENBASE_CODER_DESKTOP_RENDERER_URL;
 const backendBaseUrl =
   process.env.OPENBASE_CODER_DESKTOP_BACKEND_URL || RUNTIME_DEFAULTS.backendBaseUrl;
@@ -51,7 +55,11 @@ try {
 }
 const developerDashboardOnly = isDeveloperDashboardOnly({
   appPackaged: app.isPackaged,
-  envValue: process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
+  // The /Applications launcher stub starts Electron through `open -a`, which
+  // cannot pass environment variables — accept the argv form too.
+  envValue: process.argv.includes("--openbase-dev-dashboard")
+    ? "1"
+    : process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
   installation: activeInstallation,
 });
 const appIconPath = path.join(__dirname, "..", "assets", "openbase-coder-icon.png");
@@ -313,8 +321,30 @@ async function activateBundledCliPackageOnce() {
 
 const activateBundledCliPackage = createSingleFlight(activateBundledCliPackageOnce);
 
+// The login-shell PATH lookup costs 1-2s per call; the result cannot change
+// within a run, so resolve it once.
+let cachedDevCliPath = null;
+
 async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   let activationError = null;
+  // A development installation's single source of truth is the workspace CLI
+  // on PATH. Never activate the bundled package there, and don't let a stale
+  // activated standalone package (whose runtime may be long gone) shadow it.
+  if (developerDashboardOnly) {
+    const devDetail = "Using the development workspace openbase-coder on PATH.";
+    if (cachedDevCliPath) {
+      return { detail: devDetail, path: cachedDevCliPath, source: "path" };
+    }
+    const devPathResult = IS_WINDOWS
+      ? await captureSpawn("where", ["openbase-coder"])
+      : await shellCapture("command -v openbase-coder");
+    const devPathCli = devPathResult.stdout.trim().split(/\r?\n/)[0];
+    if (devPathResult.code === 0 && devPathCli) {
+      cachedDevCliPath = devPathCli;
+      return { detail: devDetail, path: devPathCli, source: "path" };
+    }
+    activateBundled = false;
+  }
   if (activateBundled) {
     try {
       const activation = await activateBundledCliPackage();
@@ -840,6 +870,59 @@ ipcMain.handle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
 });
 
+// The renderer asks for the capability several times around startup (auth
+// sync + focus + visibility handlers); each uncached ask costs seconds of CLI
+// spawn. Coalesce concurrent asks, cache briefly (it only changes on
+// re-login), and prefetch from whenReady so the answer usually beats the
+// first ask.
+const LOCAL_API_TOKEN_CACHE_MS = 5 * 60 * 1000;
+let localApiTokenPromise = null;
+let localApiTokenFetchedAt = 0;
+
+function fetchLocalApiToken() {
+  if (localApiTokenPromise && Date.now() - localApiTokenFetchedAt < LOCAL_API_TOKEN_CACHE_MS) {
+    return localApiTokenPromise;
+  }
+  localApiTokenFetchedAt = Date.now();
+  const startedAt = Date.now();
+  localApiTokenPromise = (async () => {
+    // Fast path: the capability lives at ~/.openbase/local-api-token (owner
+    // 0600, >=40 chars — see the CLI's config/local_api_token.py). Only fall
+    // back to the CLI when it's absent, so it can mint/repair one.
+    try {
+      const fileToken = (
+        await fsp.readFile(path.join(OPENBASE_BASE_DIR, "local-api-token"), "utf8")
+      ).trim();
+      if (fileToken.length >= 40) {
+        return fileToken;
+      }
+    } catch {
+      // Missing file — the CLI below creates it.
+    }
+    const cli = await resolveOpenbaseCoderCli();
+    const resolvedAt = Date.now();
+    if (!cli.path) {
+      throw new Error(cli.detail);
+    }
+    const result = await runArgv(cli.path, ["auth", "print-local-api-token"]);
+    mainLogger.info("local-api-token-timing", {
+      cliResolveMs: resolvedAt - startedAt,
+      cliRunMs: Date.now() - resolvedAt,
+      cliSource: cli.source,
+    });
+    const token = result.stdout.trim();
+    if (result.code !== 0 || !token) {
+      throw new Error(result.stderr.trim() || "Could not read the local API capability.");
+    }
+    return token;
+  })();
+  localApiTokenPromise.catch(() => {
+    // Never cache a failure (CLI missing, logged out) — retry on next ask.
+    localApiTokenPromise = null;
+  });
+  return localApiTokenPromise;
+}
+
 ipcMain.handle("openbase:auth:local-api-token", async (event) => {
   const frameUrl = event.senderFrame?.url || "";
   const trusted = rendererUrl
@@ -854,16 +937,7 @@ ipcMain.handle("openbase:auth:local-api-token", async (event) => {
   if (!trusted) {
     throw new Error("Local API capability access denied for this renderer.");
   }
-  const cli = await resolveOpenbaseCoderCli();
-  if (!cli.path) {
-    throw new Error(cli.detail);
-  }
-  const result = await runArgv(cli.path, ["auth", "print-local-api-token"]);
-  const token = result.stdout.trim();
-  if (result.code !== 0 || !token) {
-    throw new Error(result.stderr.trim() || "Could not read the local API capability.");
-  }
-  return token;
+  return fetchLocalApiToken();
 });
 
 ipcMain.handle("openbase:app-update:check", async () => {
@@ -1259,7 +1333,11 @@ function createWindow() {
     minHeight: 720,
     icon: appIconPath,
     backgroundColor: "#edf4ff",
-    ...(process.platform === "darwin"
+    show: false,
+    // The developer dashboard renders the console UI, which has no title-bar
+    // inset of its own — a hidden title bar puts the traffic lights on top of
+    // the console header, so give it a normal title bar instead.
+    ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           titleBarStyle: "hiddenInset",
           trafficLightPosition: { x: 18, y: 18 },
@@ -1278,6 +1356,19 @@ function createWindow() {
     },
   });
   mainWindow = window;
+
+  // Avoid the blank-window flash: reveal once the renderer has painted.
+  // ready-to-show is unreliable for hidden windows (observed never firing on
+  // cold boots), so also show on did-finish-load and after a short fallback.
+  let shown = false;
+  const showWindow = () => {
+    if (shown || window.isDestroyed()) return;
+    shown = true;
+    window.show();
+  };
+  window.once("ready-to-show", showWindow);
+  window.webContents.once("did-finish-load", showWindow);
+  setTimeout(showWindow, 2_000);
 
   window.on("closed", () => {
     if (mainWindow === window) {
@@ -1309,6 +1400,32 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
+// Developer installs pair the dashboard with the Swift status menu-bar UI: the
+// dashboard must never run without it (the reverse — menu bar alone — is
+// fine). Public checkouts without the private sibling build just get the
+// dashboard.
+function ensureDevMenuBarApp() {
+  if (!developerDashboardOnly || process.platform !== "darwin") return;
+  const { execFile } = require("child_process");
+  const productsDir = path.join(
+    __dirname, "..", "..", "netmesh-macos", "DerivedData", "Build", "Products",
+  );
+  const candidate = ["Release", "Debug"]
+    .map((configuration) => path.join(productsDir, configuration, "OpenbaseNetmesh.app"))
+    .find((appPath) => fs.existsSync(appPath));
+  if (!candidate) return;
+  execFile("pgrep", ["-f", "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$"], (notRunning) => {
+    if (!notRunning) return;
+    execFile("open", ["-g", candidate], (error) => {
+      if (error) {
+        mainLogger.error("dev-menu-bar-launch-failed", { message: error.message, candidate });
+      } else {
+        mainLogger.info("dev-menu-bar-launched", { candidate });
+      }
+    });
+  });
+}
+
 function registerDeepLinkProtocol() {
   let registered = false;
   if (process.defaultApp) {
@@ -1337,6 +1454,11 @@ if (gotSingleInstanceLock) {
   desktopControlServer = createDesktopControlServer({
     liveKitCompanion,
     logger: mainLogger,
+    onFocusRequest: () => {
+      mainLogger.info("focus-requested");
+      focusMainWindow();
+      app.focus({ steal: true });
+    },
   });
   desktopControlServer
     .start()
@@ -1353,6 +1475,9 @@ if (gotSingleInstanceLock) {
     app.dock.setIcon(appIconPath);
   }
   setupMediaPermissionHandler();
+  ensureDevMenuBarApp();
+  // Warm the auth capability while the renderer is still booting.
+  fetchLocalApiToken().catch(() => {});
   createWindow();
   setupAppAutoUpdater();
   // Let the first window paint before possibly showing the installer
@@ -1369,9 +1494,15 @@ if (gotSingleInstanceLock) {
   }
 
   app.on("activate", () => {
+    mainLogger.info("app-activate", { windows: BrowserWindow.getAllWindows().length });
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      return;
     }
+    // Reopening from Finder/Spotlight/Dock must surface the existing window.
+    // steal: an unpackaged dev app doesn't reliably self-activate otherwise.
+    focusMainWindow();
+    app.focus({ steal: true });
   });
   });
 }
