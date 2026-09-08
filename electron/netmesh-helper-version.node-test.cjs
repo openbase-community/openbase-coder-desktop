@@ -1,14 +1,19 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
 const repoRoot = path.resolve(__dirname, "..");
 
-test("Netmesh helper protocol upgrades receive a new SMAppService build", () => {
-  const project = readFileSync(path.join(repoRoot, "netmesh-macos/project.yml"), "utf8");
+test("Netmesh helper protocol upgrades receive a new SMAppService build", (t) => {
+  const netmeshRoot = path.resolve(repoRoot, "..", "netmesh-macos");
+  if (!existsSync(netmeshRoot)) {
+    t.skip("Private companion sources are absent from public desktop checkouts");
+    return;
+  }
+  const project = readFileSync(path.join(netmeshRoot, "project.yml"), "utf8");
   const protocol = readFileSync(
-    path.join(repoRoot, "netmesh-macos/Shared/NetmeshDaemonProtocol.swift"),
+    path.join(netmeshRoot, "Shared/NetmeshDaemonProtocol.swift"),
     "utf8",
   );
   const buildMatch = project.match(/^\s*CURRENT_PROJECT_VERSION:\s*"(\d+)"/m);
@@ -26,6 +31,6 @@ test("Netmesh helper protocol upgrades receive a new SMAppService build", () => 
 test("desktop registration uses the fail-closed helper replacement endpoint", () => {
   const manager = readFileSync(path.join(repoRoot, "electron/netmesh-companion.cjs"), "utf8");
 
-  assert.match(manager, /register: \(\) => call\("POST", "\/replace-helper"\)/);
+  assert.match(manager, /register: \(\) => completeHelperReplacement\(\s*\(\) => call\("POST", "\/replace-helper"\),\s*\(\) => call\("POST", "\/register"\)/);
   assert.doesNotMatch(manager, /register: \(\) => call\("POST", "\/register"\)/);
 });
