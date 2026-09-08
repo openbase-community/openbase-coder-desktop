@@ -415,6 +415,11 @@ jobs:
             -C "$package_dir"
           echo "OPENBASE_CODER_DESKTOP_CLI_PACKAGE_DIR=${package_dir}" >> "$GITHUB_ENV"
 
+      # Spotlight indexing the DMG staging folder is the usual culprit behind
+      # transient "hdiutil: create failed - Resource busy" packaging failures.
+      - name: Disable Spotlight indexing
+        run: sudo mdutil -a -i off || true
+
       - name: Build, sign, and notarize macOS DMG
         working-directory: desktop
         run: |
