@@ -103,7 +103,8 @@
       {
         "name": "Openbase",
         "schemes": [
-          "openbase"
+          "openbase",
+          "openbase-coder"
         ]
       }
     ]

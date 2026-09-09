@@ -77,6 +77,10 @@ let mainWindow = null;
 const pendingDeepLinks = [];
 let rendererDeepLinkReady = false;
 const DEEP_LINK_PROTOCOL = "openbase";
+// Links minted before the openbase:// rename still resolve; both schemes
+// stay registered (see build.protocols in package.json).
+const LEGACY_DEEP_LINK_PROTOCOL = "openbase-coder";
+const DEEP_LINK_PROTOCOLS = [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL];
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 const IS_WINDOWS = process.platform === "win32";
@@ -526,7 +530,9 @@ function parseDeepLink(rawUrl) {
     return null;
   }
 
-  if (parsedUrl.protocol !== `${DEEP_LINK_PROTOCOL}:`) {
+  if (
+    !DEEP_LINK_PROTOCOLS.some((protocol) => parsedUrl.protocol === `${protocol}:`)
+  ) {
     return null;
   }
 
@@ -542,7 +548,9 @@ function parseDeepLink(rawUrl) {
 }
 
 function deepLinkArg(argv) {
-  return argv.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}:`));
+  return argv.find((arg) =>
+    DEEP_LINK_PROTOCOLS.some((protocol) => arg.startsWith(`${protocol}:`)),
+  );
 }
 
 function flushPendingDeepLinks(force = false) {
@@ -1483,19 +1491,21 @@ function ensureDevMenuBarApp() {
 }
 
 function registerDeepLinkProtocol() {
-  let registered = false;
-  if (process.defaultApp) {
-    registered = app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
-      path.resolve(process.argv[1] || "."),
-    ]);
-  } else {
-    registered = app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+  for (const protocol of DEEP_LINK_PROTOCOLS) {
+    let registered = false;
+    if (process.defaultApp) {
+      registered = app.setAsDefaultProtocolClient(protocol, process.execPath, [
+        path.resolve(process.argv[1] || "."),
+      ]);
+    } else {
+      registered = app.setAsDefaultProtocolClient(protocol);
+    }
+    const logRegistration = registered ? mainLogger.info : mainLogger.error;
+    logRegistration("deep-link-protocol-registration", {
+      protocol,
+      registered,
+    });
   }
-  const logRegistration = registered ? mainLogger.info : mainLogger.error;
-  logRegistration("deep-link-protocol-registration", {
-    protocol: DEEP_LINK_PROTOCOL,
-    registered,
-  });
 }
 
 if (gotSingleInstanceLock) {
