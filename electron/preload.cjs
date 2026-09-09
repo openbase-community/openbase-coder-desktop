@@ -208,6 +208,31 @@ contextBridge.exposeInMainWorld("__OPENBASE_DEEP_LINKS__", {
   },
 });
 
+// OS notification surfaces for the console's notification feed. Feature
+// detected by coder-react (`window.__OPENBASE_NOTIFICATIONS__`); the web
+// console simply lacks the bridge.
+contextBridge.exposeInMainWorld("__OPENBASE_NOTIFICATIONS__", {
+  notify(payload) {
+    void ipcRenderer.invoke("openbase:notifications:show", {
+      title: payload?.title,
+      body: payload?.body,
+      path: payload?.path,
+    });
+  },
+  setBadgeCount(count) {
+    void ipcRenderer.invoke("openbase:notifications:badge", count);
+  },
+});
+
+// Banner clicks navigate the console; the console mounts a HashRouter in
+// the desktop shell, so setting the hash is the navigation contract (same
+// as report deep links in DesktopShell).
+ipcRenderer.on("openbase:notifications:navigate", (_event, targetPath) => {
+  if (typeof targetPath === "string" && targetPath.startsWith("/")) {
+    window.location.hash = `#${targetPath}`;
+  }
+});
+
 window.addEventListener("error", (event) => {
   sendRendererLog("error", {
     column: event.colno,

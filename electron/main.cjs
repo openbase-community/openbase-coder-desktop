@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Notification, ipcMain, session, shell, systemPreferences } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -1117,6 +1117,40 @@ ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
 ipcMain.handle("openbase:deep-link:ready", async () => {
   rendererDeepLinkReady = true;
   flushPendingDeepLinks();
+  return { ok: true };
+});
+
+// Feed notifications: the renderer (coder-react NotificationsProvider)
+// decides *what* to notify; main owns the OS surfaces — Notification
+// banners and the dock badge. Clicking a banner focuses the window and
+// navigates the console's HashRouter to the notification's subject.
+ipcMain.handle("openbase:notifications:show", async (_event, payload) => {
+  if (!Notification.isSupported()) {
+    return { ok: false, error: "notifications-unsupported" };
+  }
+  const title = typeof payload?.title === "string" ? payload.title : "Openbase";
+  const body = typeof payload?.body === "string" ? payload.body : "";
+  const targetPath = typeof payload?.path === "string" ? payload.path : "";
+  const notification = new Notification({ title, body, silent: false });
+  notification.on("click", () => {
+    focusMainWindow();
+    app.focus({ steal: true });
+    if (
+      targetPath &&
+      mainWindow &&
+      !mainWindow.isDestroyed()
+    ) {
+      mainWindow.webContents.send("openbase:notifications:navigate", targetPath);
+    }
+  });
+  notification.show();
+  return { ok: true };
+});
+
+ipcMain.handle("openbase:notifications:badge", async (_event, count) => {
+  const value = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  // No-op outside macOS/Linux docks.
+  app.setBadgeCount(value);
   return { ok: true };
 });
 
