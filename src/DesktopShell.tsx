@@ -471,6 +471,18 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     }
 
     return deepLinks.onOpen((payload) => {
+      if (payload.intent === "report" && payload.project && payload.report) {
+        // Open the console Reports page at this report. The console mounts a
+        // HashRouter (getRuntimeShell() === "electron"), so setting the hash
+        // navigates it. If onboarding is still in progress the console is not
+        // mounted yet; the hash is honored when it mounts.
+        const query = new URLSearchParams({
+          project: payload.project,
+          report: payload.report,
+        });
+        window.location.hash = `#/dashboard/reports?${query.toString()}`;
+        return;
+      }
       if (payload.intent !== "login-complete" && payload.intent !== "post-subscribe") {
         return;
       }

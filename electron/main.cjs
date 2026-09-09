@@ -76,7 +76,7 @@ let desktopControlServer = null;
 let mainWindow = null;
 const pendingDeepLinks = [];
 let rendererDeepLinkReady = false;
-const DEEP_LINK_PROTOCOL = "openbase-coder";
+const DEEP_LINK_PROTOCOL = "openbase";
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 const IS_WINDOWS = process.platform === "win32";
@@ -533,7 +533,12 @@ function parseDeepLink(rawUrl) {
   const action = parsedUrl.hostname || parsedUrl.pathname.replace(/^\/+/, "") || "open";
   const intent = parsedUrl.searchParams.get("intent") || "open";
   const source = parsedUrl.searchParams.get("source") || "unknown";
-  return { action, intent, source };
+  // Report deep links (intent=report) carry the project directory and the
+  // report file path so the renderer can open the console Reports page at that
+  // report. Absent for auth/subscribe links.
+  const project = parsedUrl.searchParams.get("project") || null;
+  const report = parsedUrl.searchParams.get("report") || null;
+  return { action, intent, source, project, report };
 }
 
 function deepLinkArg(argv) {
