@@ -545,13 +545,17 @@ function deepLinkArg(argv) {
   return argv.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}:`));
 }
 
-function flushPendingDeepLinks() {
-  if (
-    !rendererDeepLinkReady ||
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
-    mainWindow.webContents.isLoading()
-  ) {
+function flushPendingDeepLinks(force = false) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
+    return;
+  }
+  // rendererDeepLinkReady tracks whether the renderer has (re)subscribed its
+  // listener since the last load. It can be stale-false on a fully-loaded
+  // window — a did-start-loading that does not tear down the React tree leaves
+  // the listener registered but the flag off — which would strand a link. A
+  // forced flush ignores the flag: it is only ever scheduled once the window
+  // has finished loading (see handleDeepLink), where the listener is present.
+  if (!force && !rendererDeepLinkReady) {
     return;
   }
 
@@ -586,6 +590,19 @@ function handleDeepLink(rawUrl) {
   pendingDeepLinks.push(payload);
   focusMainWindow();
   flushPendingDeepLinks();
+  // Fallback for a stale-false rendererDeepLinkReady on an already-loaded
+  // window (e.g. a link delivered to a long-running app over the control
+  // server): if the window has finished loading, force a flush shortly after
+  // so the link is dispatched even when the readiness handshake was missed.
+  // The short delay lets a legitimate ready flush win first; flushed links are
+  // shifted off the queue, so this never double-dispatches.
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading()
+  ) {
+    setTimeout(() => flushPendingDeepLinks(true), 300);
+  }
 }
 
 if (!gotSingleInstanceLock) {
@@ -1462,6 +1479,14 @@ if (gotSingleInstanceLock) {
     onFocusRequest: () => {
       mainLogger.info("focus-requested");
       focusMainWindow();
+      app.focus({ steal: true });
+    },
+    onDeepLink: (url) => {
+      // A running instance received a deep link over the control server
+      // (LaunchServices does not reliably deliver openbase:// to an app that
+      // is already running). Route it through the same handler as an
+      // OS-delivered link, then bring the window forward.
+      handleDeepLink(url);
       app.focus({ steal: true });
     },
   });

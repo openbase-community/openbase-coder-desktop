@@ -67,7 +67,14 @@ function sendJson(response, statusCode, payload) {
   response.end(body);
 }
 
-async function handleControlRequest({ request, response, secret, liveKitCompanion, onFocusRequest }) {
+async function handleControlRequest({
+  request,
+  response,
+  secret,
+  liveKitCompanion,
+  onFocusRequest,
+  onDeepLink,
+}) {
   if (request.headers["x-openbase-desktop-secret"] !== secret) {
     sendJson(response, 401, { ok: false, error: "Unauthorized" });
     return;
@@ -86,6 +93,24 @@ async function handleControlRequest({ request, response, secret, liveKitCompanio
       // Used by the /Applications launcher stub: it runs-and-exits on every
       // open, and asks the live instance to surface its window here.
       onFocusRequest?.();
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/deep-link") {
+      // Deliver a deep link straight to the running instance, bypassing
+      // LaunchServices. macOS does not reliably route `open openbase://…` to an
+      // already-running app (it works dependably only when the URL launches a
+      // fresh process), so callers like `openbase-coder reports open` post the
+      // URL here when the app is up and fall back to `open` only for cold
+      // starts. onDeepLink runs the same parse/focus/dispatch path as an
+      // OS-delivered link.
+      const body = await readJsonRequest(request);
+      if (typeof body.url !== "string" || !body.url) {
+        sendJson(response, 400, { ok: false, error: "url is required" });
+        return;
+      }
+      onDeepLink?.(body.url);
       sendJson(response, 200, { ok: true });
       return;
     }
@@ -130,10 +155,22 @@ async function handleControlRequest({ request, response, secret, liveKitCompanio
   }
 }
 
-function createDesktopControlServer({ liveKitCompanion, logger, onFocusRequest }) {
+function createDesktopControlServer({
+  liveKitCompanion,
+  logger,
+  onFocusRequest,
+  onDeepLink,
+}) {
   const secret = crypto.randomBytes(32).toString("hex");
   const server = http.createServer((request, response) => {
-    void handleControlRequest({ request, response, secret, liveKitCompanion, onFocusRequest });
+    void handleControlRequest({
+      request,
+      response,
+      secret,
+      liveKitCompanion,
+      onFocusRequest,
+      onDeepLink,
+    });
   });
 
   async function start() {
