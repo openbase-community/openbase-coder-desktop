@@ -13,6 +13,7 @@
     "companion:build:mac": "xcodebuild -project companion/livekit-swift-example/LiveKitExample.xcodeproj -scheme SwiftSDK.1 -destination 'platform=macOS' -configuration Debug -derivedDataPath companion/livekit-swift-example/.derivedData build",
     "companion:stage:mac": "node scripts/stage-mac-companion.mjs",
     "companion:stage:netmesh": "node scripts/stage-netmesh-companion.mjs",
+    "companion:stage:netmesh-menubar": "node scripts/stage-netmesh-menubar.mjs",
     "cli:stage:mac": "node scripts/stage-openbase-coder-cli.mjs",
     "build": "vite build",
     "start": "electron .",
@@ -20,7 +21,7 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "release:clean": "node scripts/clean-release.mjs",
     "release:preflight:mac": "node scripts/check-mac-release-prereqs.mjs",
-    "dist:mac": "pnpm run release:preflight:mac && pnpm run release:clean && pnpm run icons:generate && pnpm run build && pnpm run companion:stage:mac && pnpm run companion:stage:netmesh && pnpm run cli:stage:mac && electron-builder --mac --arm64 --publish never && node scripts/build-dmg.mjs",
+    "dist:mac": "pnpm run release:preflight:mac && pnpm run release:clean && pnpm run icons:generate && pnpm run build && pnpm run companion:stage:mac && pnpm run companion:stage:netmesh && pnpm run companion:stage:netmesh-menubar && pnpm run cli:stage:mac && electron-builder --mac --arm64 --publish never && node scripts/build-dmg.mjs",
     "dist:mac:publish": "pnpm run dist:mac && node scripts/notarize-dmg.mjs && node scripts/publish-s3.mjs",
     "dist:linux": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --linux AppImage --x64 --publish never -c.extraResources=[] -c.executableName=openbase",
     "dist:linux:publish": "pnpm run dist:linux && OPENBASE_CODER_RELEASE_PREFIX=linux node scripts/publish-s3.mjs",
@@ -66,6 +67,10 @@
       {
         "from": "companion-build/OpenbaseNetmeshCompanion.app",
         "to": "OpenbaseNetmeshCompanion.app"
+      },
+      {
+        "from": "companion-build/OpenbaseNetmesh.app",
+        "to": "OpenbaseNetmesh.app"
       }
     ],
     "asar": true,

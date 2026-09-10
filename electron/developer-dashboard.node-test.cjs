@@ -6,7 +6,12 @@ const { isDeveloperDashboardOnly } = require("./developer-dashboard.cjs");
 test("every unpackaged Electron launch is dashboard-only", () => {
   assert.equal(isDeveloperDashboardOnly({ appPackaged: false, envValue: "1" }), true);
   assert.equal(isDeveloperDashboardOnly({ appPackaged: false, envValue: undefined }), true);
-  assert.equal(isDeveloperDashboardOnly({ appPackaged: true, envValue: "1" }), false);
+});
+
+test("the env/argv override opts a packaged app into dashboard-only", () => {
+  assert.equal(isDeveloperDashboardOnly({ appPackaged: true, envValue: "1" }), true);
+  assert.equal(isDeveloperDashboardOnly({ appPackaged: true, envValue: undefined }), false);
+  assert.equal(isDeveloperDashboardOnly({ appPackaged: true, envValue: "0" }), false);
 });
 
 test("a development installation always disables Electron setup", () => {

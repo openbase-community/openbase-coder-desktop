@@ -15,6 +15,7 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
+const { findMenuBarApp, menuBarAppCandidates } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
@@ -1464,30 +1465,53 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
-// Developer installs pair the dashboard with the Swift status menu-bar UI: the
-// dashboard must never run without it (the reverse — menu bar alone — is
-// fine). Public checkouts without the private sibling build just get the
-// dashboard.
-function ensureDevMenuBarApp() {
-  if (!developerDashboardOnly || process.platform !== "darwin") return;
-  const { execFile } = require("child_process");
-  const productsDir = path.join(
-    __dirname, "..", "..", "netmesh-macos", "DerivedData", "Build", "Products",
-  );
-  const candidate = ["Release", "Debug"]
-    .map((configuration) => path.join(productsDir, configuration, "OpenbaseNetmesh.app"))
-    .find((appPath) => fs.existsSync(appPath));
-  if (!candidate) return;
-  execFile("pgrep", ["-f", "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$"], (notRunning) => {
-    if (!notRunning) return;
-    execFile("open", ["-g", candidate], (error) => {
-      if (error) {
-        mainLogger.error("dev-menu-bar-launch-failed", { message: error.message, candidate });
-      } else {
-        mainLogger.info("dev-menu-bar-launched", { candidate });
+// The Swift status menu-bar UI (OpenbaseNetmesh.app) pairs with the desktop
+// app on every install pathway: developer installs launch the workspace's
+// netmesh-macos build products, standalone (DMG) installs launch the copy
+// bundled into Contents/Resources. The desktop app must never run without the
+// menu bar, so the launch is idempotent and retried on activation and on a
+// timer instead of being attempted once.
+const MENU_BAR_ENSURE_INTERVAL_MS = 60_000;
+let menuBarEnsureInFlight = false;
+let menuBarMissingLogged = false;
+async function ensureMenuBarApp() {
+  if (process.platform !== "darwin" || menuBarEnsureInFlight) return;
+  menuBarEnsureInFlight = true;
+  try {
+    const resolveOptions = {
+      electronDir: __dirname,
+      envPath: process.env.OPENBASE_NETMESH_MENUBAR_APP_PATH,
+      resourcesPath: process.resourcesPath,
+      workspacePath: activeInstallation?.workspace_path,
+    };
+    const candidate = findMenuBarApp(resolveOptions, (appPath) => fs.existsSync(appPath));
+    if (!candidate) {
+      if (!menuBarMissingLogged) {
+        menuBarMissingLogged = true;
+        mainLogger.error("menu-bar-app-missing", {
+          searched: menuBarAppCandidates(resolveOptions),
+        });
       }
-    });
-  });
+      return;
+    }
+    const running = await captureSpawn("pgrep", [
+      "-f",
+      "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$",
+    ]);
+    if (running.code === 0) return;
+    const opened = await captureSpawn("open", ["-g", candidate]);
+    if (opened.code === 0) {
+      mainLogger.info("menu-bar-launched", { candidate });
+    } else {
+      mainLogger.error("menu-bar-launch-failed", {
+        candidate,
+        code: opened.code,
+        stderr: opened.stderr.trim(),
+      });
+    }
+  } finally {
+    menuBarEnsureInFlight = false;
+  }
 }
 
 function registerDeepLinkProtocol() {
@@ -1549,7 +1573,10 @@ if (gotSingleInstanceLock) {
     app.dock.setIcon(appIconPath);
   }
   setupMediaPermissionHandler();
-  ensureDevMenuBarApp();
+  void ensureMenuBarApp();
+  setInterval(() => {
+    void ensureMenuBarApp();
+  }, MENU_BAR_ENSURE_INTERVAL_MS).unref();
   // Warm the auth capability while the renderer is still booting.
   fetchLocalApiToken().catch(() => {});
   createWindow();
@@ -1569,6 +1596,7 @@ if (gotSingleInstanceLock) {
 
   app.on("activate", () => {
     mainLogger.info("app-activate", { windows: BrowserWindow.getAllWindows().length });
+    void ensureMenuBarApp();
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
       return;
