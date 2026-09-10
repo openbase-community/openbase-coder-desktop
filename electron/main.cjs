@@ -15,7 +15,7 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
-const { findMenuBarApp, menuBarAppCandidates } = require("./menu-bar-app.cjs");
+const { isExpectedCodeSignatureOutput, menuBarAppCandidates } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
@@ -1474,6 +1474,61 @@ function createWindow() {
 const MENU_BAR_ENSURE_INTERVAL_MS = 60_000;
 let menuBarEnsureInFlight = false;
 let menuBarMissingLogged = false;
+
+function appBundlePathFromExecutable(command) {
+  const marker = ".app/Contents/MacOS/";
+  const index = command.indexOf(marker);
+  if (index === -1) return null;
+  return command.slice(0, index + ".app".length);
+}
+
+async function menuBarAppCompatibility(appPath) {
+  const codesign = await captureSpawn("/usr/bin/codesign", ["-dv", "--verbose=4", appPath]);
+  if (codesign.code !== 0) {
+    return { ok: false, reason: "codesign failed", stderr: codesign.stderr.trim() };
+  }
+  const output = `${codesign.stdout}\n${codesign.stderr}`;
+  if (!isExpectedCodeSignatureOutput(output)) {
+    return { ok: false, reason: "code signature cannot access netmesh helper" };
+  }
+  return { ok: true };
+}
+
+async function findCompatibleMenuBarApp(resolveOptions) {
+  for (const candidate of menuBarAppCandidates(resolveOptions)) {
+    if (!fs.existsSync(candidate)) continue;
+    const compatibility = await menuBarAppCompatibility(candidate);
+    if (compatibility.ok) return candidate;
+    mainLogger.warn("menu-bar-app-skipped", {
+      candidate,
+      reason: compatibility.reason,
+      stderr: compatibility.stderr,
+    });
+  }
+  return null;
+}
+
+async function runningMenuBarApps() {
+  const running = await captureSpawn("pgrep", [
+    "-f",
+    "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$",
+  ]);
+  if (running.code !== 0) return [];
+  const pids = running.stdout
+    .split(/\s+/)
+    .map((pid) => pid.trim())
+    .filter(Boolean);
+  const apps = [];
+  for (const pid of pids) {
+    const command = await captureSpawn("ps", ["-p", pid, "-o", "command="]);
+    if (command.code !== 0) continue;
+    const executable = command.stdout.trim();
+    const appPath = appBundlePathFromExecutable(executable);
+    if (appPath) apps.push({ appPath, pid });
+  }
+  return apps;
+}
+
 async function ensureMenuBarApp() {
   if (process.platform !== "darwin" || menuBarEnsureInFlight) return;
   menuBarEnsureInFlight = true;
@@ -1484,7 +1539,31 @@ async function ensureMenuBarApp() {
       resourcesPath: process.resourcesPath,
       workspacePath: activeInstallation?.workspace_path,
     };
-    const candidate = findMenuBarApp(resolveOptions, (appPath) => fs.existsSync(appPath));
+    const running = await runningMenuBarApps();
+    let compatibleRunning = false;
+    for (const runningApp of running) {
+      const compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      if (compatibility.ok) {
+        compatibleRunning = true;
+      } else {
+        mainLogger.warn("menu-bar-app-stale-instance", {
+          appPath: runningApp.appPath,
+          pid: runningApp.pid,
+          reason: compatibility.reason,
+        });
+        try {
+          process.kill(Number(runningApp.pid), "SIGTERM");
+        } catch (error) {
+          mainLogger.warn("menu-bar-app-stale-terminate-failed", {
+            message: error.message,
+            pid: runningApp.pid,
+          });
+        }
+      }
+    }
+    if (compatibleRunning) return;
+
+    const candidate = await findCompatibleMenuBarApp(resolveOptions);
     if (!candidate) {
       if (!menuBarMissingLogged) {
         menuBarMissingLogged = true;
@@ -1494,11 +1573,6 @@ async function ensureMenuBarApp() {
       }
       return;
     }
-    const running = await captureSpawn("pgrep", [
-      "-f",
-      "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$",
-    ]);
-    if (running.code === 0) return;
     const opened = await captureSpawn("open", ["-g", candidate]);
     if (opened.code === 0) {
       mainLogger.info("menu-bar-launched", { candidate });
