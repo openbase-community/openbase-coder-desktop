@@ -593,7 +593,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     !forceOnboarding
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-500 antialiased">
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground antialiased">
         <div className="inline-flex items-center gap-3 text-sm font-medium">
           <PulsingDot />
           Opening Openbase…

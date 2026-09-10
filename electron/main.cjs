@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Notification, ipcMain, session, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Notification, ipcMain, nativeTheme, session, shell, systemPreferences } = require("electron");
+const { registerAppearance } = require("./appearance.cjs");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -1097,6 +1098,8 @@ ipcMain.handle("openbase:installer:open-tailscale-app", async () => {
     return { ok: false, error: error.message };
   }
 });
+
+registerAppearance({ ipcMain, nativeTheme, BrowserWindow });
 
 ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
   if (typeof targetUrl !== "string") {

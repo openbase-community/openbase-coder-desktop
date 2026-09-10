@@ -73,6 +73,12 @@ contextBridge.exposeInMainWorld("__OPENBASE_RUNTIME_CONFIG__", {
   shell: "electron",
 });
 
+contextBridge.exposeInMainWorld("__OPENBASE_APPEARANCE__", {
+  setTheme(theme) {
+    ipcRenderer.send("openbase:appearance:set", theme);
+  },
+});
+
 contextBridge.exposeInMainWorld("__OPENBASE_SHELL__", {
   openExternal(url) {
     return ipcRenderer.invoke("openbase:shell:open-external", url);
