@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Notification, ipcMain, nativeTheme, session, shell, systemPreferences } = require("electron");
 const { registerAppearance } = require("./appearance.cjs");
+const { registerWorkspaceKeyboard } = require("./workspace-keyboard.cjs");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -1424,6 +1425,7 @@ function createWindow() {
     },
   });
   mainWindow = window;
+  registerWorkspaceKeyboard(window.webContents);
 
   // Avoid the blank-window flash: reveal once the renderer has painted.
   // ready-to-show is unreliable for hidden windows (observed never firing on
