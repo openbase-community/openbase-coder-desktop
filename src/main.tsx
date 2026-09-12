@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import App from "@openbase/coder-react/App";
+import { AppearanceProvider } from "@openbase/coder-react/appearance";
 import { PluginRegistryProvider } from "@openbase/coder-react/plugin-registry";
 import { configureProductAnalytics } from "@openbase/coder-react/product-analytics";
 import "@openbase/coder-react/index.css";
@@ -13,13 +14,14 @@ window.__OPENBASE_RUNTIME_CONFIG__ ??= {
 };
 
 document.documentElement.dataset.openbaseRuntime = "electron";
-document.documentElement.classList.remove("dark");
 configureProductAnalytics(productAnalytics);
 
 createRoot(document.getElementById("root")!).render(
-  <DesktopShell>
-    <PluginRegistryProvider>
-      <App />
-    </PluginRegistryProvider>
-  </DesktopShell>
+  <AppearanceProvider>
+    <DesktopShell>
+      <PluginRegistryProvider>
+        <App />
+      </PluginRegistryProvider>
+    </DesktopShell>
+  </AppearanceProvider>
 );

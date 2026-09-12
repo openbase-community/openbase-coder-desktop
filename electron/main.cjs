@@ -1,4 +1,6 @@
-const { app, BrowserWindow, ipcMain, session, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Notification, ipcMain, nativeTheme, session, shell, systemPreferences } = require("electron");
+const { registerAppearance } = require("./appearance.cjs");
+const { registerWorkspaceKeyboard } = require("./workspace-keyboard.cjs");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -15,6 +17,7 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
+const { isExpectedCodeSignatureOutput, menuBarAppCandidates } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
@@ -76,7 +79,11 @@ let desktopControlServer = null;
 let mainWindow = null;
 const pendingDeepLinks = [];
 let rendererDeepLinkReady = false;
-const DEEP_LINK_PROTOCOL = "openbase-coder";
+const DEEP_LINK_PROTOCOL = "openbase";
+// Links minted before the openbase:// rename still resolve; both schemes
+// stay registered (see build.protocols in package.json).
+const LEGACY_DEEP_LINK_PROTOCOL = "openbase-coder";
+const DEEP_LINK_PROTOCOLS = [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL];
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 const IS_WINDOWS = process.platform === "win32";
@@ -526,27 +533,40 @@ function parseDeepLink(rawUrl) {
     return null;
   }
 
-  if (parsedUrl.protocol !== `${DEEP_LINK_PROTOCOL}:`) {
+  if (
+    !DEEP_LINK_PROTOCOLS.some((protocol) => parsedUrl.protocol === `${protocol}:`)
+  ) {
     return null;
   }
 
   const action = parsedUrl.hostname || parsedUrl.pathname.replace(/^\/+/, "") || "open";
   const intent = parsedUrl.searchParams.get("intent") || "open";
   const source = parsedUrl.searchParams.get("source") || "unknown";
-  return { action, intent, source };
+  // Report deep links (intent=report) carry the project directory and the
+  // report file path so the renderer can open the console Reports page at that
+  // report. Absent for auth/subscribe links.
+  const project = parsedUrl.searchParams.get("project") || null;
+  const report = parsedUrl.searchParams.get("report") || null;
+  return { action, intent, source, project, report };
 }
 
 function deepLinkArg(argv) {
-  return argv.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}:`));
+  return argv.find((arg) =>
+    DEEP_LINK_PROTOCOLS.some((protocol) => arg.startsWith(`${protocol}:`)),
+  );
 }
 
-function flushPendingDeepLinks() {
-  if (
-    !rendererDeepLinkReady ||
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
-    mainWindow.webContents.isLoading()
-  ) {
+function flushPendingDeepLinks(force = false) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
+    return;
+  }
+  // rendererDeepLinkReady tracks whether the renderer has (re)subscribed its
+  // listener since the last load. It can be stale-false on a fully-loaded
+  // window — a did-start-loading that does not tear down the React tree leaves
+  // the listener registered but the flag off — which would strand a link. A
+  // forced flush ignores the flag: it is only ever scheduled once the window
+  // has finished loading (see handleDeepLink), where the listener is present.
+  if (!force && !rendererDeepLinkReady) {
     return;
   }
 
@@ -581,6 +601,19 @@ function handleDeepLink(rawUrl) {
   pendingDeepLinks.push(payload);
   focusMainWindow();
   flushPendingDeepLinks();
+  // Fallback for a stale-false rendererDeepLinkReady on an already-loaded
+  // window (e.g. a link delivered to a long-running app over the control
+  // server): if the window has finished loading, force a flush shortly after
+  // so the link is dispatched even when the readiness handshake was missed.
+  // The short delay lets a legitimate ready flush win first; flushed links are
+  // shifted off the queue, so this never double-dispatches.
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading()
+  ) {
+    setTimeout(() => flushPendingDeepLinks(true), 300);
+  }
 }
 
 if (!gotSingleInstanceLock) {
@@ -1067,6 +1100,8 @@ ipcMain.handle("openbase:installer:open-tailscale-app", async () => {
   }
 });
 
+registerAppearance({ ipcMain, nativeTheme, BrowserWindow });
+
 ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
   if (typeof targetUrl !== "string") {
     return { ok: false, error: "URL must be a string." };
@@ -1095,6 +1130,40 @@ ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
 ipcMain.handle("openbase:deep-link:ready", async () => {
   rendererDeepLinkReady = true;
   flushPendingDeepLinks();
+  return { ok: true };
+});
+
+// Feed notifications: the renderer (coder-react NotificationsProvider)
+// decides *what* to notify; main owns the OS surfaces — Notification
+// banners and the dock badge. Clicking a banner focuses the window and
+// navigates the console's HashRouter to the notification's subject.
+ipcMain.handle("openbase:notifications:show", async (_event, payload) => {
+  if (!Notification.isSupported()) {
+    return { ok: false, error: "notifications-unsupported" };
+  }
+  const title = typeof payload?.title === "string" ? payload.title : "Openbase";
+  const body = typeof payload?.body === "string" ? payload.body : "";
+  const targetPath = typeof payload?.path === "string" ? payload.path : "";
+  const notification = new Notification({ title, body, silent: false });
+  notification.on("click", () => {
+    focusMainWindow();
+    app.focus({ steal: true });
+    if (
+      targetPath &&
+      mainWindow &&
+      !mainWindow.isDestroyed()
+    ) {
+      mainWindow.webContents.send("openbase:notifications:navigate", targetPath);
+    }
+  });
+  notification.show();
+  return { ok: true };
+});
+
+ipcMain.handle("openbase:notifications:badge", async (_event, count) => {
+  const value = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  // No-op outside macOS/Linux docks.
+  app.setBadgeCount(value);
   return { ok: true };
 });
 
@@ -1356,6 +1425,7 @@ function createWindow() {
     },
   });
   mainWindow = window;
+  registerWorkspaceKeyboard(window.webContents);
 
   // Avoid the blank-window flash: reveal once the renderer has painted.
   // ready-to-show is unreliable for hidden windows (observed never firing on
@@ -1400,46 +1470,145 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
-// Developer installs pair the dashboard with the Swift status menu-bar UI: the
-// dashboard must never run without it (the reverse — menu bar alone — is
-// fine). Public checkouts without the private sibling build just get the
-// dashboard.
-function ensureDevMenuBarApp() {
-  if (!developerDashboardOnly || process.platform !== "darwin") return;
-  const { execFile } = require("child_process");
-  const productsDir = path.join(
-    __dirname, "..", "..", "netmesh-macos", "DerivedData", "Build", "Products",
-  );
-  const candidate = ["Release", "Debug"]
-    .map((configuration) => path.join(productsDir, configuration, "OpenbaseNetmesh.app"))
-    .find((appPath) => fs.existsSync(appPath));
-  if (!candidate) return;
-  execFile("pgrep", ["-f", "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$"], (notRunning) => {
-    if (!notRunning) return;
-    execFile("open", ["-g", candidate], (error) => {
-      if (error) {
-        mainLogger.error("dev-menu-bar-launch-failed", { message: error.message, candidate });
-      } else {
-        mainLogger.info("dev-menu-bar-launched", { candidate });
-      }
+// The Swift status menu-bar UI (OpenbaseNetmesh.app) pairs with the desktop
+// app on every install pathway: developer installs launch the workspace's
+// netmesh-macos build products, standalone (DMG) installs launch the copy
+// bundled into Contents/Resources. The desktop app must never run without the
+// menu bar, so the launch is idempotent and retried on activation and on a
+// timer instead of being attempted once.
+const MENU_BAR_ENSURE_INTERVAL_MS = 60_000;
+let menuBarEnsureInFlight = false;
+let menuBarMissingLogged = false;
+
+function appBundlePathFromExecutable(command) {
+  const marker = ".app/Contents/MacOS/";
+  const index = command.indexOf(marker);
+  if (index === -1) return null;
+  return command.slice(0, index + ".app".length);
+}
+
+async function menuBarAppCompatibility(appPath) {
+  const codesign = await captureSpawn("/usr/bin/codesign", ["-dv", "--verbose=4", appPath]);
+  if (codesign.code !== 0) {
+    return { ok: false, reason: "codesign failed", stderr: codesign.stderr.trim() };
+  }
+  const output = `${codesign.stdout}\n${codesign.stderr}`;
+  if (!isExpectedCodeSignatureOutput(output)) {
+    return { ok: false, reason: "code signature cannot access netmesh helper" };
+  }
+  return { ok: true };
+}
+
+async function findCompatibleMenuBarApp(resolveOptions) {
+  for (const candidate of menuBarAppCandidates(resolveOptions)) {
+    if (!fs.existsSync(candidate)) continue;
+    const compatibility = await menuBarAppCompatibility(candidate);
+    if (compatibility.ok) return candidate;
+    mainLogger.warn("menu-bar-app-skipped", {
+      candidate,
+      reason: compatibility.reason,
+      stderr: compatibility.stderr,
     });
-  });
+  }
+  return null;
+}
+
+async function runningMenuBarApps() {
+  const running = await captureSpawn("pgrep", [
+    "-f",
+    "OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh$",
+  ]);
+  if (running.code !== 0) return [];
+  const pids = running.stdout
+    .split(/\s+/)
+    .map((pid) => pid.trim())
+    .filter(Boolean);
+  const apps = [];
+  for (const pid of pids) {
+    const command = await captureSpawn("ps", ["-p", pid, "-o", "command="]);
+    if (command.code !== 0) continue;
+    const executable = command.stdout.trim();
+    const appPath = appBundlePathFromExecutable(executable);
+    if (appPath) apps.push({ appPath, pid });
+  }
+  return apps;
+}
+
+async function ensureMenuBarApp() {
+  if (process.platform !== "darwin" || menuBarEnsureInFlight) return;
+  menuBarEnsureInFlight = true;
+  try {
+    const resolveOptions = {
+      electronDir: __dirname,
+      envPath: process.env.OPENBASE_NETMESH_MENUBAR_APP_PATH,
+      resourcesPath: process.resourcesPath,
+      workspacePath: activeInstallation?.workspace_path,
+    };
+    const running = await runningMenuBarApps();
+    let compatibleRunning = false;
+    for (const runningApp of running) {
+      const compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      if (compatibility.ok) {
+        compatibleRunning = true;
+      } else {
+        mainLogger.warn("menu-bar-app-stale-instance", {
+          appPath: runningApp.appPath,
+          pid: runningApp.pid,
+          reason: compatibility.reason,
+        });
+        try {
+          process.kill(Number(runningApp.pid), "SIGTERM");
+        } catch (error) {
+          mainLogger.warn("menu-bar-app-stale-terminate-failed", {
+            message: error.message,
+            pid: runningApp.pid,
+          });
+        }
+      }
+    }
+    if (compatibleRunning) return;
+
+    const candidate = await findCompatibleMenuBarApp(resolveOptions);
+    if (!candidate) {
+      if (!menuBarMissingLogged) {
+        menuBarMissingLogged = true;
+        mainLogger.error("menu-bar-app-missing", {
+          searched: menuBarAppCandidates(resolveOptions),
+        });
+      }
+      return;
+    }
+    const opened = await captureSpawn("open", ["-g", candidate]);
+    if (opened.code === 0) {
+      mainLogger.info("menu-bar-launched", { candidate });
+    } else {
+      mainLogger.error("menu-bar-launch-failed", {
+        candidate,
+        code: opened.code,
+        stderr: opened.stderr.trim(),
+      });
+    }
+  } finally {
+    menuBarEnsureInFlight = false;
+  }
 }
 
 function registerDeepLinkProtocol() {
-  let registered = false;
-  if (process.defaultApp) {
-    registered = app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
-      path.resolve(process.argv[1] || "."),
-    ]);
-  } else {
-    registered = app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+  for (const protocol of DEEP_LINK_PROTOCOLS) {
+    let registered = false;
+    if (process.defaultApp) {
+      registered = app.setAsDefaultProtocolClient(protocol, process.execPath, [
+        path.resolve(process.argv[1] || "."),
+      ]);
+    } else {
+      registered = app.setAsDefaultProtocolClient(protocol);
+    }
+    const logRegistration = registered ? mainLogger.info : mainLogger.error;
+    logRegistration("deep-link-protocol-registration", {
+      protocol,
+      registered,
+    });
   }
-  const logRegistration = registered ? mainLogger.info : mainLogger.error;
-  logRegistration("deep-link-protocol-registration", {
-    protocol: DEEP_LINK_PROTOCOL,
-    registered,
-  });
 }
 
 if (gotSingleInstanceLock) {
@@ -1459,6 +1628,14 @@ if (gotSingleInstanceLock) {
       focusMainWindow();
       app.focus({ steal: true });
     },
+    onDeepLink: (url) => {
+      // A running instance received a deep link over the control server
+      // (LaunchServices does not reliably deliver openbase:// to an app that
+      // is already running). Route it through the same handler as an
+      // OS-delivered link, then bring the window forward.
+      handleDeepLink(url);
+      app.focus({ steal: true });
+    },
   });
   desktopControlServer
     .start()
@@ -1475,7 +1652,10 @@ if (gotSingleInstanceLock) {
     app.dock.setIcon(appIconPath);
   }
   setupMediaPermissionHandler();
-  ensureDevMenuBarApp();
+  void ensureMenuBarApp();
+  setInterval(() => {
+    void ensureMenuBarApp();
+  }, MENU_BAR_ENSURE_INTERVAL_MS).unref();
   // Warm the auth capability while the renderer is still booting.
   fetchLocalApiToken().catch(() => {});
   createWindow();
@@ -1495,6 +1675,7 @@ if (gotSingleInstanceLock) {
 
   app.on("activate", () => {
     mainLogger.info("app-activate", { windows: BrowserWindow.getAllWindows().length });
+    void ensureMenuBarApp();
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
       return;

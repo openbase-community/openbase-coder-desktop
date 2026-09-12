@@ -125,6 +125,8 @@ function requestJson({ port, secret, method = "GET", path: requestPath, body, ti
   });
 }
 
+const { completeHelperReplacement } = require("./netmesh-registration.cjs");
+
 function createNetmeshCompanionManager({ electronDir }) {
   const repoRoot = path.resolve(electronDir, "..");
   const port = companionIpcPort();
@@ -216,7 +218,10 @@ function createNetmeshCompanionManager({ electronDir }) {
     },
     // This explicit endpoint reads the running version before it considers a
     // helper-only unregister/register. It never disconnects the VPN engine.
-    register: () => call("POST", "/replace-helper"),
+    register: () => completeHelperReplacement(
+      () => call("POST", "/replace-helper"),
+      () => call("POST", "/register"),
+    ),
     openApprovalSettings: () => call("POST", "/open-approval-settings"),
     connect: ({ controlURL, authKey, hostname }) =>
       call("POST", "/connect", { controlURL, authKey, hostname }),

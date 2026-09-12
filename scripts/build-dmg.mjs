@@ -59,6 +59,23 @@ function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], ...options });
 }
 
+// hdiutil create/attach/convert intermittently lose a race against Spotlight
+// or diskarbitrationd on CI runners ("Resource busy"); retry them the same
+// way detach already does rather than failing a 30-minute build over it.
+function runHdiutilRetrying(args, options = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return run("hdiutil", args, options);
+    } catch (error) {
+      if (attempt >= 5) {
+        throw error;
+      }
+      console.warn(`hdiutil ${args[0]} failed (attempt ${attempt}); retrying...`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
+    }
+  }
+}
+
 function generateBackground() {
   const electronBin = require("electron");
   run(electronBin, [path.join(__dirname, "generate-dmg-background.mjs")], {
@@ -85,7 +102,7 @@ function stageContents() {
 }
 
 function attachReadWrite() {
-  const plist = run("hdiutil", ["attach", rwDmgPath, "-readwrite", "-noverify", "-noautoopen", "-plist"]);
+  const plist = runHdiutilRetrying(["attach", rwDmgPath, "-readwrite", "-noverify", "-noautoopen", "-plist"]);
   const match = plist.match(/<key>mount-point<\/key>\s*<string>([^<]+)<\/string>/);
   if (!match) {
     throw new Error("Could not determine the mount point of the staging DMG.");
@@ -247,8 +264,7 @@ if (!existsSync(appPath)) {
 generateBackground();
 stageContents();
 
-run(
-  "hdiutil",
+runHdiutilRetrying(
   ["create", "-volname", volumeName, "-srcfolder", stage, "-ov", "-fs", "HFS+", "-format", "UDRW", rwDmgPath],
   { stdio: "inherit" },
 );
@@ -262,7 +278,7 @@ try {
   detach(mountPoint);
 }
 
-run("hdiutil", ["convert", rwDmgPath, "-format", "ULFO", "-o", dmgPath], { stdio: "inherit" });
+runHdiutilRetrying(["convert", rwDmgPath, "-format", "ULFO", "-o", dmgPath], { stdio: "inherit" });
 rmSync(rwDmgPath, { force: true });
 rmSync(stage, { recursive: true, force: true });
 console.log(`Built ${dmgPath}`);

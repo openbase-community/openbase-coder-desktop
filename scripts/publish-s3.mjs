@@ -132,23 +132,25 @@ for (const fileName of updateFeedFilesByOs[baseOs] ?? []) {
   upload(filePath, fileName, "public, max-age=300");
 }
 
-// Publish the signed netmesh companion so public desktop checkouts (which
-// have no netmesh-macos source) can stage it prebuilt — see
-// stage-netmesh-companion.mjs. macOS only; ditto preserves the signature.
+// Publish the signed netmesh apps (headless companion + status menu-bar UI)
+// so public desktop checkouts (which have no netmesh-macos source) can stage
+// them prebuilt — see stage-netmesh-companion.mjs and
+// stage-netmesh-menubar.mjs. macOS only; ditto preserves the signature.
 if (baseOs === "mac") {
-  const stagedCompanion = path.join(
-    repoRoot,
-    "companion-build",
-    "OpenbaseNetmeshCompanion.app",
-  );
-  if (existsSync(stagedCompanion)) {
-    const companionZipName = "OpenbaseNetmeshCompanion-latest-arm64.zip";
-    const companionZipPath = path.join(releaseDir, companionZipName);
-    run("ditto", ["-c", "-k", "--keepParent", stagedCompanion, companionZipPath]);
-    upload(companionZipPath, companionZipName, "public, max-age=300");
-  } else {
-    console.warn(
-      "[publish-s3] no staged netmesh companion to publish (companion-build missing)",
-    );
+  const netmeshArtifacts = [
+    { appName: "OpenbaseNetmeshCompanion.app", label: "netmesh companion", zipName: "OpenbaseNetmeshCompanion-latest-arm64.zip" },
+    { appName: "OpenbaseNetmesh.app", label: "netmesh menu-bar app", zipName: "OpenbaseNetmesh-latest-arm64.zip" },
+  ];
+  for (const { appName, label, zipName } of netmeshArtifacts) {
+    const stagedApp = path.join(repoRoot, "companion-build", appName);
+    if (existsSync(stagedApp)) {
+      const zipPath = path.join(releaseDir, zipName);
+      run("ditto", ["-c", "-k", "--keepParent", stagedApp, zipPath]);
+      upload(zipPath, zipName, "public, max-age=300");
+    } else {
+      console.warn(
+        `[publish-s3] no staged ${label} to publish (companion-build missing)`,
+      );
+    }
   }
 }

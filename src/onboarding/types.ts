@@ -211,6 +211,10 @@ export type DeepLinkPayload = {
   action?: string;
   intent?: string;
   source?: string;
+  // Present on intent="report" links: the project directory and report file
+  // path used to open the console Reports page at that report.
+  project?: string | null;
+  report?: string | null;
 };
 
 export type DeepLinkApi = {

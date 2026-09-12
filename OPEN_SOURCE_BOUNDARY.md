@@ -24,20 +24,22 @@ keep both sides buildable.
 
 ## How a public checkout builds without netmesh source
 
-`scripts/stage-netmesh-companion.mjs` resolves the companion in priority
-order:
+`scripts/stage-netmesh-companion.mjs` (the headless VPN companion,
+`OpenbaseNetmeshCompanion.app`) and `scripts/stage-netmesh-menubar.mjs` (the
+status menu-bar UI, `OpenbaseNetmesh.app`, bundled so the menu bar runs on
+standalone installs too) each resolve their app in priority order:
 
 1. a netmesh-macos checkout (`OPENBASE_NETMESH_MACOS_DIR`, or the workspace
    sibling `../netmesh-macos` cloned by the internal install set) — builds
    from source;
-2. an already-staged `companion-build/OpenbaseNetmeshCompanion.app` — kept;
+2. an already-staged copy under `companion-build/` — kept;
 3. **the signed prebuilt artifact** published by every mac release
-   (`<releases-bucket>/<prefix>/OpenbaseNetmeshCompanion-latest-arm64.zip`,
-   uploaded by `scripts/publish-s3.mjs`) — downloaded, signature-verified,
-   and staged.
+   (`<releases-bucket>/<prefix>/OpenbaseNetmeshCompanion-latest-arm64.zip` /
+   `<releases-bucket>/<prefix>/OpenbaseNetmesh-latest-arm64.zip`, uploaded by
+   `scripts/publish-s3.mjs`) — downloaded, signature-verified, and staged.
 
-Because the artifact is signed and notarization rides the outer app build,
-public contributors get a bit-identical companion to what members build from
+Because the artifacts are signed and notarization rides the outer app build,
+public contributors get bit-identical netmesh apps to what members build from
 source.
 
 ## History
