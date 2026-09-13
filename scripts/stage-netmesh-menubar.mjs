@@ -16,6 +16,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
+import { assertSupportedNetmeshBuild } from "./netmesh-prebuilt-contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -29,6 +30,16 @@ const MENUBAR_ZIP_NAME = "OpenbaseNetmesh-latest-arm64.zip";
 const prebuiltMenuBarUrl =
   process.env.OPENBASE_NETMESH_MENUBAR_URL ??
   `https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${releasePrefix}/${MENUBAR_ZIP_NAME}`;
+
+function verifyStagedMenuBar() {
+  const infoPlist = path.join(stagedAppPath, "Contents", "Info.plist");
+  const build = execFileSync(
+    "/usr/libexec/PlistBuddy",
+    ["-c", "Print :CFBundleVersion", infoPlist],
+    { encoding: "utf8" },
+  );
+  assertSupportedNetmeshBuild(build, "OpenbaseNetmesh");
+}
 
 function downloadPrebuiltMenuBarApp() {
   const zipPath = path.join(stagedRoot, MENUBAR_ZIP_NAME);
@@ -48,6 +59,7 @@ function downloadPrebuiltMenuBarApp() {
       `[stage-netmesh-menubar] ${MENUBAR_ZIP_NAME} did not contain OpenbaseNetmesh.app`,
     );
   }
+  verifyStagedMenuBar();
   execFileSync("codesign", ["--verify", "--deep", stagedAppPath], { stdio: "inherit" });
   console.log(`[stage-netmesh-menubar] staged prebuilt ${stagedAppPath}`);
 }
@@ -65,6 +77,7 @@ const netmeshDir = netmeshDirCandidates.find((candidate) =>
 
 if (!netmeshDir) {
   if (existsSync(stagedAppPath)) {
+    verifyStagedMenuBar();
     console.log(
       `[stage-netmesh-menubar] keeping prebuilt menu-bar app at ${stagedAppPath}`,
     );
@@ -140,4 +153,5 @@ for (const embeddedExecutable of ["NetmeshHelper", "netmesh-ctl"]) {
   );
 }
 signAppBundle(stagedAppPath, "macOS Netmesh menu-bar app");
+verifyStagedMenuBar();
 console.log(`[stage-netmesh-menubar] staged ${stagedAppPath}`);

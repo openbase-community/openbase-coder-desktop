@@ -15,6 +15,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
+import { assertSupportedNetmeshBuild } from "./netmesh-prebuilt-contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -28,6 +29,16 @@ const COMPANION_ZIP_NAME = "OpenbaseNetmeshCompanion-latest-arm64.zip";
 const prebuiltCompanionUrl =
   process.env.OPENBASE_NETMESH_COMPANION_URL ??
   `https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${releasePrefix}/${COMPANION_ZIP_NAME}`;
+
+function verifyStagedCompanion() {
+  const infoPlist = path.join(stagedAppPath, "Contents", "Info.plist");
+  const build = execFileSync(
+    "/usr/libexec/PlistBuddy",
+    ["-c", "Print :CFBundleVersion", infoPlist],
+    { encoding: "utf8" },
+  );
+  assertSupportedNetmeshBuild(build, "OpenbaseNetmeshCompanion");
+}
 
 function downloadPrebuiltCompanion() {
   const zipPath = path.join(stagedRoot, COMPANION_ZIP_NAME);
@@ -47,6 +58,7 @@ function downloadPrebuiltCompanion() {
       `[stage-netmesh-companion] ${COMPANION_ZIP_NAME} did not contain OpenbaseNetmeshCompanion.app`,
     );
   }
+  verifyStagedCompanion();
   execFileSync("codesign", ["--verify", "--deep", stagedAppPath], { stdio: "inherit" });
   console.log(`[stage-netmesh-companion] staged prebuilt ${stagedAppPath}`);
 }
@@ -64,6 +76,7 @@ const netmeshDir = netmeshDirCandidates.find((candidate) =>
 
 if (!netmeshDir) {
   if (existsSync(stagedAppPath)) {
+    verifyStagedCompanion();
     console.log(
       `[stage-netmesh-companion] keeping prebuilt companion at ${stagedAppPath}`,
     );
@@ -133,4 +146,5 @@ for (const executableName of ["tailscale", "tailscaled"]) {
   );
 }
 signAppBundle(stagedAppPath, "macOS Netmesh companion app");
+verifyStagedCompanion();
 console.log(`[stage-netmesh-companion] staged ${stagedAppPath}`);
