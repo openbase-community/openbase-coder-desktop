@@ -17,3 +17,17 @@ test("Netmesh prebuilt contract rejects stale and malformed builds", async () =>
   );
   assert.throws(() => assertSupportedNetmeshBuild("latest", "companion"), /invalid/);
 });
+
+test("Netmesh prebuilts follow the package release channel", async () => {
+  const { resolveNetmeshPrebuiltPrefix } = await import(contractUrl);
+
+  assert.equal(resolveNetmeshPrebuiltPrefix("0.1.18"), "mac");
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18-staging.20260913171839"),
+    "mac-staging",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18-staging.20260913171839", "test-prefix"),
+    "test-prefix",
+  );
+});

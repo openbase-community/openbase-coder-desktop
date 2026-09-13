@@ -10,12 +10,15 @@
 // signed prebuilt published by the release pipeline. This is the boundary
 // that lets the Electron app sources be public while netmesh stays closed —
 // public contributors build the whole app from the downloaded artifact.
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
-import { assertSupportedNetmeshBuild } from "./netmesh-prebuilt-contract.mjs";
+import {
+  assertSupportedNetmeshBuild,
+  resolveNetmeshPrebuiltPrefix,
+} from "./netmesh-prebuilt-contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -24,7 +27,13 @@ const stagedAppPath = path.join(stagedRoot, "OpenbaseNetmeshCompanion.app");
 
 // Same bucket/prefix scheme as publish-s3.mjs; staging builds read the
 // staging prefix so the two channels stay hermetic.
-const releasePrefix = process.env.OPENBASE_CODER_RELEASE_PREFIX ?? "mac";
+const packageVersion = JSON.parse(
+  readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+).version;
+const releasePrefix = resolveNetmeshPrebuiltPrefix(
+  packageVersion,
+  process.env.OPENBASE_CODER_RELEASE_PREFIX,
+);
 const COMPANION_ZIP_NAME = "OpenbaseNetmeshCompanion-latest-arm64.zip";
 const prebuiltCompanionUrl =
   process.env.OPENBASE_NETMESH_COMPANION_URL ??
