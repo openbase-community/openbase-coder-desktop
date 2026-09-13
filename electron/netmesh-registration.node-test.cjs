@@ -5,22 +5,30 @@ const pending = { ok: true, helper: "notRegistered", helperReplacementPending: t
 
 test("pending registration continues through a new request", async () => {
   let calls = 0;
+  let preparations = 0;
   const enabled = { ok: true, helper: "enabled", helperReplaced: true };
   const status = await completeHelperReplacement(
     async () => (++calls === 1 ? pending : enabled),
-    async () => ({ ok: true, helper: "enabled" }), async () => {},
+    async () => ({ ok: true, helper: "enabled" }),
+    async () => {},
+    async () => { preparations += 1; },
   );
   assert.deepEqual(status, enabled);
   assert.equal(calls, 2);
+  assert.equal(preparations, 1);
 });
 
 test("pending registration is bounded", async () => {
   let calls = 0;
+  let preparations = 0;
   await assert.rejects(completeHelperReplacement(
     async () => pending,
-    async () => { calls += 1; return pending; }, async () => {},
+    async () => { calls += 1; return pending; },
+    async () => {},
+    async () => { preparations += 1; },
   ), /did not complete/);
   assert.equal(calls, 10);
+  assert.equal(preparations, 10);
 });
 
 test("approval requirements and failures are never retried", async () => {

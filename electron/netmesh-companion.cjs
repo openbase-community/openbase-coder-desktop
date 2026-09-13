@@ -213,6 +213,14 @@ function createNetmeshCompanionManager({ electronDir }) {
     return requestJson({ port, secret, method, path: requestPath, body });
   }
 
+  async function recycleCompanionBeforeRegistration() {
+    // macOS can reject every SMAppService.register() attempted by the same
+    // process that just unregistered an older helper. Start a fresh companion
+    // process before continuing the pending replacement handshake.
+    terminateCompanionProcesses();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
+
   return {
     available: () => process.platform === "darwin" && Boolean(findCompanionApp(repoRoot)),
     status: async () => {
@@ -227,6 +235,8 @@ function createNetmeshCompanionManager({ electronDir }) {
     register: () => completeHelperReplacement(
       () => call("POST", "/replace-helper"),
       () => call("POST", "/register"),
+      undefined,
+      recycleCompanionBeforeRegistration,
     ),
     openApprovalSettings: () => call("POST", "/open-approval-settings"),
     connect: ({ controlURL, authKey, hostname }) =>

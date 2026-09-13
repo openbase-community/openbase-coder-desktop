@@ -4,6 +4,7 @@ async function completeHelperReplacement(
   request,
   register,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  prepareRegistration = async () => {},
 ) {
   const status = await request();
   for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -11,6 +12,7 @@ async function completeHelperReplacement(
     if (status.helper !== "notRegistered") {
       throw new Error(`Helper replacement cannot continue in state ${status.helper}`);
     }
+    await prepareRegistration();
     await wait(200);
     const registration = await register();
     if (registration.ok === false) return registration;
