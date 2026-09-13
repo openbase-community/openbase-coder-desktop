@@ -3,6 +3,11 @@
 // older artifact that predates behavior the desktop runtime relies on.
 export const MINIMUM_NETMESH_BUILD = 15;
 
+export function resolveNetmeshPrebuiltPrefix(packageVersion, configuredPrefix) {
+  if (configuredPrefix) return configuredPrefix;
+  return String(packageVersion).includes("-staging.") ? "mac-staging" : "mac";
+}
+
 export function assertSupportedNetmeshBuild(rawBuild, label) {
   const value = String(rawBuild).trim();
   if (!/^\d+$/.test(value)) {
