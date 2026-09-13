@@ -19,6 +19,7 @@ import {
   audioProviderOptions,
   CLOUD_STATE_POLL_INTERVAL_MS,
   DEFAULT_SETUP_BACKEND,
+  filterTailnetOptionsForInstall,
   getBackendBaseUrl,
   LAUNCH_SETTLE_TIMEOUT_MS,
   REQUIRED_PREREQUISITE_IDS,
@@ -75,12 +76,9 @@ import {
 
 export default function DesktopShell({ children }: { children: ReactNode }) {
   const backendBaseUrl = useMemo(() => getBackendBaseUrl(), []);
-  const developerDashboardOnly =
-    (
-      window.__OPENBASE_RUNTIME_CONFIG__ as
-        | { developerDashboardOnly?: boolean }
-        | undefined
-    )?.developerDashboardOnly === true;
+  const runtimeConfig = window.__OPENBASE_RUNTIME_CONFIG__;
+  const developerDashboardOnly = runtimeConfig?.developerDashboardOnly === true;
+  const nonDeveloperInstall = runtimeConfig?.nonDeveloperInstall === true;
   const installer = window.__OPENBASE_INSTALLER__;
   // Voluntary "look back" navigation only; the step the flow is actually on
   // is derived from observable facts (see deriveOnboardingStep).
@@ -88,7 +86,9 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   const [selectedBackend, setSelectedBackend] = useState<BackendChoice>(DEFAULT_SETUP_BACKEND);
   // This machine's tailnet transport (mirrors the CLI env; account-level
   // choices flow through the CLI's orchestrator).
-  const [tailnetProvider, setTailnetProvider] = useState<TailnetProvider>("tailscale");
+  const [tailnetProvider, setTailnetProvider] = useState<TailnetProvider>(
+    nonDeveloperInstall ? "netmesh" : "tailscale",
+  );
   const [tailnetOptions, setTailnetOptions] = useState<TailnetExperience[]>([]);
   const [tailnetCatalogError, setTailnetCatalogError] = useState<string | null>(null);
   const refreshTailnetProvider = useCallback(async () => {
@@ -100,11 +100,14 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
         );
         return;
       }
-      const supportedOptions = result.options.filter(
-        (option) =>
-          option.electron_onboarding &&
-          (!installer?.platform ||
-            option.electron_platforms.includes(installer.platform)),
+      const supportedOptions = filterTailnetOptionsForInstall(
+        result.options.filter(
+          (option) =>
+            option.electron_onboarding &&
+            (!installer?.platform ||
+              option.electron_platforms.includes(installer.platform)),
+        ),
+        nonDeveloperInstall,
       );
       if (supportedOptions.length === 0) {
         setTailnetCatalogError(
@@ -117,7 +120,8 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       setTailnetProvider(
         supportedOptions.some((option) => option.provider === result.provider)
           ? (result.provider as TailnetProvider)
-          : "tailscale",
+          : (supportedOptions.find((option) => option.recommended)?.provider ??
+              supportedOptions[0].provider),
       );
     } catch (error) {
       setTailnetCatalogError(
@@ -126,7 +130,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
           : "Could not load networking choices from the Openbase CLI.",
       );
     }
-  }, [installer]);
+  }, [installer, nonDeveloperInstall]);
   useEffect(() => {
     void refreshTailnetProvider();
   }, [refreshTailnetProvider]);

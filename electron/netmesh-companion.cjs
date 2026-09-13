@@ -14,6 +14,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const { createSingleFlight } = require("./single-flight.cjs");
 
 const DYNAMIC_IPC_PORT_MIN = 40000;
 const DYNAMIC_IPC_PORT_MAX = 60999;
@@ -139,7 +140,7 @@ function createNetmeshCompanionManager({ electronDir }) {
     return requestJson({ port, secret, path: "/status", timeout: 4000 });
   }
 
-  async function ensureRunning() {
+  async function ensureRunningOnce() {
     if (process.platform !== "darwin") {
       throw new Error("The netmesh VPN companion is macOS-only.");
     }
@@ -201,6 +202,11 @@ function createNetmeshCompanionManager({ electronDir }) {
     terminateCompanionProcesses();
     throw new Error(`Netmesh companion did not become ready: ${lastError || "unknown error"}`);
   }
+
+  // Onboarding refreshes status every few seconds, while a cold companion
+  // launch can take longer than one refresh interval. Coalesce those probes
+  // so they cannot each kill and relaunch the same singleton companion.
+  const ensureRunning = createSingleFlight(ensureRunningOnce);
 
   async function call(method, requestPath, body) {
     await ensureRunning();

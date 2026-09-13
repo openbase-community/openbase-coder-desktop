@@ -4,6 +4,7 @@ import {
   DEFAULT_AUDIO_PROVIDER,
   DEFAULT_SETUP_BACKEND,
   existingMachineBackendOptions,
+  filterTailnetOptionsForInstall,
   NORMAL_ONBOARDING_AUDIO_PROVIDER,
   NORMAL_ONBOARDING_BACKEND,
   setupCommandText,
@@ -18,6 +19,20 @@ describe("onboarding setup defaults", () => {
     expect(setupCommandText()).toBe(
       "openbase-coder setup --backend openbase-cloud --audio-provider openbase-cloud",
     );
+  });
+
+  it("hides third-party Tailscale from non-developer installs", () => {
+    const options = [
+      { provider: "tailscale" },
+      { provider: "netmesh" },
+      { provider: "netmesh-tsnet" },
+    ] as Parameters<typeof filterTailnetOptionsForInstall>[0];
+
+    expect(filterTailnetOptionsForInstall(options, true).map(({ provider }) => provider)).toEqual([
+      "netmesh",
+      "netmesh-tsnet",
+    ]);
+    expect(filterTailnetOptionsForInstall(options, false)).toEqual(options);
   });
 
   it("keeps developer override command generation available", () => {

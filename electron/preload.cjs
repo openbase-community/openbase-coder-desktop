@@ -58,6 +58,9 @@ const backendArg = process.argv.find((arg) =>
 const developerDashboardOnly = process.argv.includes(
   "--openbase-developer-dashboard-only=1",
 );
+const nonDeveloperInstall = process.argv.includes(
+  "--openbase-non-developer-install=1",
+);
 
 // main.cjs always supplies --openbase-backend-base-url (defaulted from
 // electron/runtime-defaults.json, which the sandboxed preload cannot
@@ -70,6 +73,7 @@ const backendBaseUrl = backendArg
 contextBridge.exposeInMainWorld("__OPENBASE_RUNTIME_CONFIG__", {
   backendBaseUrl,
   developerDashboardOnly,
+  nonDeveloperInstall,
   shell: "electron",
 });
 
