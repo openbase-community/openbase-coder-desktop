@@ -19,6 +19,7 @@ const {
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
 const { isExpectedCodeSignatureOutput, menuBarAppCandidates } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
+const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
 const {
@@ -1709,6 +1710,12 @@ if (gotSingleInstanceLock) {
   // Warm the auth capability while the renderer is still booting.
   fetchLocalApiToken().catch(() => {});
   createWindow();
+  void reconcileNetmeshHelperOnLaunch({
+    enabled: nonDeveloperInstall && process.platform === "darwin",
+    readTailnetConfig: readTailnetConfigViaCli,
+    register: () => netmeshCompanion.register(),
+    logger: mainLogger,
+  });
   setupAppAutoUpdater();
   // Let the first window paint before possibly showing the installer
   // cleanup dialog on a fresh install.
