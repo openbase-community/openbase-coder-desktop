@@ -899,7 +899,36 @@ function setupAppAutoUpdater() {
   checkForAppUpdates();
 }
 
-ipcMain.handle("openbase:app-update:status", async () => {
+// The preload re-executes (bridge included) in any page the window ends up
+// displaying, so no IPC channel may assume its caller is our UI. A sender is
+// trusted only when its frame is the packaged file:// bundle — or the dev
+// server origin in source-workspace launches.
+function isTrustedSenderFrame(frame) {
+  const frameUrl = frame?.url || "";
+  if (rendererUrl) {
+    try {
+      return new URL(frameUrl).origin === new URL(rendererUrl).origin;
+    } catch {
+      return false;
+    }
+  }
+  return frameUrl.startsWith("file://");
+}
+
+function trustedHandle(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedSenderFrame(event.senderFrame)) {
+      mainLogger.error("ipc-untrusted-sender", {
+        channel,
+        frameUrl: event.senderFrame?.url || null,
+      });
+      throw new Error(`IPC access denied for this renderer: ${channel}`);
+    }
+    return handler(event, ...args);
+  });
+}
+
+trustedHandle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
 });
 
@@ -956,24 +985,11 @@ function fetchLocalApiToken() {
   return localApiTokenPromise;
 }
 
-ipcMain.handle("openbase:auth:local-api-token", async (event) => {
-  const frameUrl = event.senderFrame?.url || "";
-  const trusted = rendererUrl
-    ? (() => {
-        try {
-          return new URL(frameUrl).origin === new URL(rendererUrl).origin;
-        } catch {
-          return false;
-        }
-      })()
-    : frameUrl.startsWith("file://");
-  if (!trusted) {
-    throw new Error("Local API capability access denied for this renderer.");
-  }
+trustedHandle("openbase:auth:local-api-token", async () => {
   return fetchLocalApiToken();
 });
 
-ipcMain.handle("openbase:app-update:check", async () => {
+trustedHandle("openbase:app-update:check", async () => {
   if (!app.isPackaged) {
     return { ok: false, error: "Auto-update is disabled in development builds." };
   }
@@ -1004,11 +1020,11 @@ function setDesktopControlState(patch) {
   }
 }
 
-ipcMain.handle("openbase:desktop-control:status", async () => {
+trustedHandle("openbase:desktop-control:status", async () => {
   return { ok: true, state: desktopControlState };
 });
 
-ipcMain.handle("openbase:app-update:quit-and-install", async () => {
+trustedHandle("openbase:app-update:quit-and-install", async () => {
   if (appUpdateState.status !== "downloaded") {
     return { ok: false, error: "No downloaded update is ready to install." };
   }
@@ -1029,6 +1045,7 @@ mainLogger.info("desktop-app starting", {
 });
 
 ipcMain.on("openbase:renderer-log", (event, entry = {}) => {
+  if (!isTrustedSenderFrame(event.senderFrame)) return;
   rendererLogger.write(entry.level || "info", "renderer-ipc", {
     ...entry,
     frameUrl: event.senderFrame?.url || null,
@@ -1038,7 +1055,7 @@ ipcMain.on("openbase:renderer-log", (event, entry = {}) => {
 // LiveKit companion discovery/launch failures must reach the renderer (the
 // screen-share UI shows `error` when `ok` is false) instead of rejecting the
 // invoke with an opaque "Error invoking remote method" wrapper.
-ipcMain.handle("openbase:livekit-companion:start-screen-share", async (_event, session) => {
+trustedHandle("openbase:livekit-companion:start-screen-share", async (_event, session) => {
   try {
     return await liveKitCompanion.startScreenShare(session);
   } catch (error) {
@@ -1047,7 +1064,7 @@ ipcMain.handle("openbase:livekit-companion:start-screen-share", async (_event, s
   }
 });
 
-ipcMain.handle("openbase:livekit-companion:stop-screen-share", async () => {
+trustedHandle("openbase:livekit-companion:stop-screen-share", async () => {
   try {
     return await liveKitCompanion.stopScreenShare();
   } catch (error) {
@@ -1056,19 +1073,19 @@ ipcMain.handle("openbase:livekit-companion:stop-screen-share", async () => {
   }
 });
 
-ipcMain.handle("openbase:livekit-companion:status", async () => {
+trustedHandle("openbase:livekit-companion:status", async () => {
   return liveKitCompanion.status();
 });
 
-ipcMain.handle("openbase:installer:check", async () => {
+trustedHandle("openbase:installer:check", async () => {
   return checkInstallerPrerequisites();
 });
 
-ipcMain.handle("openbase:installer:start", async (event, commandId, options) => {
+trustedHandle("openbase:installer:start", async (event, commandId, options) => {
   return runInstallerCommand(event, commandId, options);
 });
 
-ipcMain.handle("openbase:installer:cancel", async () => {
+trustedHandle("openbase:installer:cancel", async () => {
   if (!installerProcess) {
     return { ok: true, running: false };
   }
@@ -1076,7 +1093,7 @@ ipcMain.handle("openbase:installer:cancel", async () => {
   return { ok: true, running: true };
 });
 
-ipcMain.handle("openbase:installer:open-tailscale-download", async () => {
+trustedHandle("openbase:installer:open-tailscale-download", async () => {
   try {
     await shell.openExternal(TAILSCALE_MAC_APP_STORE_URL);
     return { ok: true };
@@ -1086,7 +1103,7 @@ ipcMain.handle("openbase:installer:open-tailscale-download", async () => {
   }
 });
 
-ipcMain.handle("openbase:installer:open-tailscale-app", async () => {
+trustedHandle("openbase:installer:open-tailscale-app", async () => {
   try {
     const result = await shellCapture("open -a Tailscale");
     if (result.code === 0) {
@@ -1102,7 +1119,7 @@ ipcMain.handle("openbase:installer:open-tailscale-app", async () => {
 
 registerAppearance({ ipcMain, nativeTheme, BrowserWindow });
 
-ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
+trustedHandle("openbase:shell:open-external", async (_event, targetUrl) => {
   if (typeof targetUrl !== "string") {
     return { ok: false, error: "URL must be a string." };
   }
@@ -1127,7 +1144,7 @@ ipcMain.handle("openbase:shell:open-external", async (_event, targetUrl) => {
   }
 });
 
-ipcMain.handle("openbase:deep-link:ready", async () => {
+trustedHandle("openbase:deep-link:ready", async () => {
   rendererDeepLinkReady = true;
   flushPendingDeepLinks();
   return { ok: true };
@@ -1137,7 +1154,7 @@ ipcMain.handle("openbase:deep-link:ready", async () => {
 // decides *what* to notify; main owns the OS surfaces — Notification
 // banners and the dock badge. Clicking a banner focuses the window and
 // navigates the console's HashRouter to the notification's subject.
-ipcMain.handle("openbase:notifications:show", async (_event, payload) => {
+trustedHandle("openbase:notifications:show", async (_event, payload) => {
   if (!Notification.isSupported()) {
     return { ok: false, error: "notifications-unsupported" };
   }
@@ -1160,7 +1177,7 @@ ipcMain.handle("openbase:notifications:show", async (_event, payload) => {
   return { ok: true };
 });
 
-ipcMain.handle("openbase:notifications:badge", async (_event, count) => {
+trustedHandle("openbase:notifications:badge", async (_event, count) => {
   const value = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
   // No-op outside macOS/Linux docks.
   app.setBadgeCount(value);
@@ -1181,9 +1198,9 @@ function readOnboardingFlags() {
   }
 }
 
-ipcMain.handle("openbase:onboarding:flags", async () => readOnboardingFlags());
+trustedHandle("openbase:onboarding:flags", async () => readOnboardingFlags());
 
-ipcMain.handle("openbase:onboarding:set-flag", async (_event, key, value) => {
+trustedHandle("openbase:onboarding:set-flag", async (_event, key, value) => {
   if (typeof key !== "string" || !key) {
     return { ok: false, error: "invalid flag key" };
   }
@@ -1193,7 +1210,7 @@ ipcMain.handle("openbase:onboarding:set-flag", async (_event, key, value) => {
   return { ok: true };
 });
 
-ipcMain.handle("openbase:onboarding:tailscale-identity", async () => {
+trustedHandle("openbase:onboarding:tailscale-identity", async () => {
   try {
     return await readTailscaleSelfViaCli();
   } catch (error) {
@@ -1202,7 +1219,7 @@ ipcMain.handle("openbase:onboarding:tailscale-identity", async () => {
   }
 });
 
-ipcMain.handle("openbase:tailnet:provider", async () => {
+trustedHandle("openbase:tailnet:provider", async () => {
   // The CLI owns both the materialized provider and the user-facing transport
   // catalog. Electron only renders that contract.
   try {
@@ -1215,7 +1232,7 @@ ipcMain.handle("openbase:tailnet:provider", async () => {
 // --- Netmesh VPN companion (macOS): register/approve/connect the embedded
 // full-device netmesh VPN without the standalone Openbase Netmesh app. ---
 
-ipcMain.handle("openbase:netmesh:status", async () => {
+trustedHandle("openbase:netmesh:status", async () => {
   try {
     const status = await netmeshCompanion.status();
     return { ...status, available: netmeshCompanion.available() };
@@ -1224,7 +1241,7 @@ ipcMain.handle("openbase:netmesh:status", async () => {
   }
 });
 
-ipcMain.handle("openbase:netmesh:register", async () => {
+trustedHandle("openbase:netmesh:register", async () => {
   try {
     const status = await netmeshCompanion.register();
     if (status.helper === "requiresApproval") {
@@ -1237,7 +1254,7 @@ ipcMain.handle("openbase:netmesh:register", async () => {
   }
 });
 
-ipcMain.handle("openbase:netmesh:connect", async () => {
+trustedHandle("openbase:netmesh:connect", async () => {
   try {
     const cli = await resolveOpenbaseCoderCli();
     if (!cli.path) {
@@ -1271,7 +1288,7 @@ ipcMain.handle("openbase:netmesh:connect", async () => {
   }
 });
 
-ipcMain.handle("openbase:netmesh:disconnect", async () => {
+trustedHandle("openbase:netmesh:disconnect", async () => {
   try {
     return await netmeshCompanion.disconnect();
   } catch (error) {
@@ -1279,7 +1296,7 @@ ipcMain.handle("openbase:netmesh:disconnect", async () => {
   }
 });
 
-ipcMain.handle("openbase:onboarding:linux-tailscale-connect", async () => {
+trustedHandle("openbase:onboarding:linux-tailscale-connect", async () => {
   if (linuxTailscaleOnboardingPromise) {
     return {
       error: "Tailscale onboarding is already running.",
@@ -1460,6 +1477,37 @@ function createWindow() {
     }
     return { action: "deny" };
   });
+
+  // setWindowOpenHandler only covers window.open/target=_blank; a plain
+  // <a href> click top-level-navigates the window in place, re-running the
+  // preload (and its IPC bridge) inside the destination page. Confine the
+  // window to our own UI and hand every other URL to the system browser.
+  const isTrustedNavigationUrl = (url) => {
+    try {
+      const parsedUrl = new URL(url);
+      if (rendererUrl) {
+        return parsedUrl.origin === new URL(rendererUrl).origin;
+      }
+      return parsedUrl.protocol === "file:";
+    } catch {
+      return false;
+    }
+  };
+  const divertNavigation = (event, url) => {
+    if (isTrustedNavigationUrl(url)) return;
+    event.preventDefault();
+    rendererLogger.info("navigation-diverted", { url });
+    try {
+      const parsedUrl = new URL(url);
+      if (["https:", "http:"].includes(parsedUrl.protocol)) {
+        shell.openExternal(parsedUrl.toString());
+      }
+    } catch (error) {
+      rendererLogger.error("navigation-url-error", { message: error.message, url });
+    }
+  };
+  window.webContents.on("will-navigate", divertNavigation);
+  window.webContents.on("will-redirect", divertNavigation);
 
   if (rendererUrl) {
     window.loadURL(rendererUrl);
