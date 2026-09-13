@@ -31,6 +31,6 @@ test("Netmesh helper protocol upgrades receive a new SMAppService build", (t) =>
 test("desktop registration uses the fail-closed helper replacement endpoint", () => {
   const manager = readFileSync(path.join(repoRoot, "electron/netmesh-companion.cjs"), "utf8");
 
-  assert.match(manager, /register: \(\) => completeHelperReplacement\(\s*\(\) => call\("POST", "\/replace-helper"\),\s*\(\) => call\("POST", "\/register"\)/);
+  assert.match(manager, /register: \(\) => completeHelperReplacement\(\s*\(\) => call\("POST", "\/replace-helper"\),\s*\(\) => call\("POST", "\/register"\),\s*undefined,\s*recycleCompanionBeforeRegistration/);
   assert.doesNotMatch(manager, /register: \(\) => call\("POST", "\/register"\)/);
 });

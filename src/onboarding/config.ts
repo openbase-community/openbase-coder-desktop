@@ -46,6 +46,11 @@ export const MOBILE_APP_DOWNLOAD_URL = "https://openbase.cloud/ios";
 export const TAILSCALE_MAC_APP_STORE_URL =
   "https://apps.apple.com/us/app/tailscale/id1475387142";
 export const CLOUD_STATE_POLL_INTERVAL_MS = 4000;
+// A packaged app and its launchd-managed backend start independently after a
+// reboot. Keep probing while health is unavailable so an already-configured
+// install leaves the onboarding shell as soon as the backend finishes booting,
+// without requiring a window-focus event or a manual Recheck click.
+export const BACKEND_HEALTH_RETRY_INTERVAL_MS = 2000;
 // Upper bound on the launch loading screen shown while the status probes
 // settle (see deriveLaunchSettling); a hung probe falls through to the
 // onboarding shell rather than a stuck spinner.

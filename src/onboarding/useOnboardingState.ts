@@ -6,6 +6,7 @@ import {
   type CliOnboardingStatus,
 } from "./cliStatus";
 import {
+  BACKEND_HEALTH_RETRY_INTERVAL_MS,
   FORCE_ONBOARDING_STORAGE_KEY,
   LINUX_ONBOARDING_COMPLETED_FLAG,
   PAIRING_ACKNOWLEDGED_FLAG,
@@ -47,6 +48,7 @@ export function useOnboardingState(
   // settled answer instead of resetting to "checking" — a reset would flip
   // derived onboarding completion and unmount the console.
   const [healthChecking, setHealthChecking] = useState(false);
+  const healthCheckInFlight = useRef(false);
   // Parsed GET /api/onboarding/status/ facts; null until the first answer.
   const [cliStatus, setCliStatus] = useState<CliOnboardingStatus | null>(null);
   // True once the status fetch settled at least once, so the launch gate
@@ -140,6 +142,10 @@ export function useOnboardingState(
   }, [authenticatedBackendFetch]);
 
   const checkHealth = useCallback(async () => {
+    if (healthCheckInFlight.current) {
+      return;
+    }
+    healthCheckInFlight.current = true;
     // Stale-while-revalidate: status keeps its last settled value while the
     // fetch runs ("checking" exists only before the first answer), so a
     // recheck can never transiently un-derive onboarding completion.
@@ -153,6 +159,7 @@ export function useOnboardingState(
     } catch {
       setStatus("unavailable");
     } finally {
+      healthCheckInFlight.current = false;
       setHealthChecking(false);
     }
   }, [backendBaseUrl, refreshCliOnboardingStatus]);
@@ -353,6 +360,16 @@ export function useOnboardingState(
       void checkPrerequisites();
     }
   }, [checkPrerequisites, status]);
+
+  useEffect(() => {
+    if (status !== "unavailable") {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      void checkHealth();
+    }, BACKEND_HEALTH_RETRY_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [checkHealth, status]);
 
   const tailscaleSelf =
     status === "ready" && cliStatus?.tailscaleSelf
