@@ -2,6 +2,8 @@ import type installerCommands from "../../electron/installer-commands.json";
 
 export type RuntimeConfig = {
   backendBaseUrl?: string;
+  developerDashboardOnly?: boolean;
+  nonDeveloperInstall?: boolean;
   routerBasename?: string;
   shell?: "web" | "electron";
 };

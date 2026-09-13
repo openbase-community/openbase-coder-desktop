@@ -35,6 +35,7 @@ const {
 const INSTALLER_COMMANDS = require("./installer-commands.json");
 const RUNTIME_DEFAULTS = require("./runtime-defaults.json");
 const APP_PACKAGE = require("../package.json");
+const nonDeveloperInstall = app.isPackaged && APP_PACKAGE.openbaseDevBuild !== true;
 
 // Keep the established data location even though the visible product name is
 // now Openbase. This preserves auth state, updater identity, and one-time
@@ -1438,6 +1439,7 @@ function createWindow() {
       additionalArguments: [
         `--openbase-backend-base-url=${backendBaseUrl}`,
         ...(developerDashboardOnly ? ["--openbase-developer-dashboard-only=1"] : []),
+        ...(nonDeveloperInstall ? ["--openbase-non-developer-install=1"] : []),
       ],
     },
   });

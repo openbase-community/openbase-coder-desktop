@@ -7,6 +7,7 @@ import type {
   InstallerCommand,
   SelectableOption,
   SetupProgressEvent,
+  TailnetExperience,
 } from "./types";
 
 export const NORMAL_ONBOARDING_BACKEND: BackendChoice = "openbase-cloud";
@@ -65,6 +66,18 @@ export const LINUX_ONBOARDING_COMPLETED_FLAG = "linuxOnboardingCompleted";
 //   localStorage.setItem("openbase-force-onboarding", "1")
 // then reload; remove the key to restore normal gating.
 export const FORCE_ONBOARDING_STORAGE_KEY = "openbase-force-onboarding";
+
+export function filterTailnetOptionsForInstall(
+  options: TailnetExperience[],
+  nonDeveloperInstall: boolean,
+): TailnetExperience[] {
+  if (!nonDeveloperInstall) {
+    return options;
+  }
+  return options.filter(
+    (option) => option.provider === "netmesh" || option.provider === "netmesh-tsnet",
+  );
+}
 
 export const SETUP_STEP_LABELS: Record<string, string> = {
   workspace: "Prepare runtime assets",
