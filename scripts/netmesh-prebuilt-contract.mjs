@@ -3,9 +3,19 @@
 // older artifact that predates behavior the desktop runtime relies on.
 export const MINIMUM_NETMESH_BUILD = 16;
 
-export function resolveNetmeshPrebuiltPrefix(packageVersion, configuredPrefix) {
+const STAGING_WEB_BACKEND_URL = "https://app-staging.openbase.cloud";
+
+export function resolveNetmeshPrebuiltPrefix(
+  packageVersion,
+  configuredPrefix,
+  webBackendUrl,
+) {
   if (configuredPrefix) return configuredPrefix;
-  return String(packageVersion).includes("-staging.") ? "mac-staging" : "mac";
+  if (String(packageVersion).includes("-staging.")) return "mac-staging";
+  if (String(webBackendUrl ?? "").replace(/\/+$/, "") === STAGING_WEB_BACKEND_URL) {
+    return "mac-staging";
+  }
+  return "mac";
 }
 
 export function assertSupportedNetmeshBuild(rawBuild, label) {

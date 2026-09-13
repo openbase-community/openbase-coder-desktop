@@ -30,4 +30,20 @@ test("Netmesh prebuilts follow the package release channel", async () => {
     resolveNetmeshPrebuiltPrefix("0.1.18-staging.20260913171839", "test-prefix"),
     "test-prefix",
   );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix(
+      "0.1.18",
+      undefined,
+      "https://app-staging.openbase.cloud/",
+    ),
+    "mac-staging",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18", undefined, "https://app.openbase.cloud"),
+    "mac",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18", "test-prefix", "https://app-staging.openbase.cloud"),
+    "test-prefix",
+  );
 });
