@@ -76,8 +76,15 @@ function findCompanionApp(repoRoot) {
   return null;
 }
 
-function terminateCompanionProcesses() {
-  const result = spawnSync("/usr/bin/pkill", ["-f", "OpenbaseNetmeshCompanion"], {
+function companionProcessPattern(port) {
+  return `OpenbaseNetmeshCompanion.*--openbase-ipc-port[ =]${port}([ ]|$)`;
+}
+
+function terminateCompanionProcess(port) {
+  // Electron and the bundled CLI may each own a control listener for the same
+  // persistent root helper. Kill only our private listener: a global pkill can
+  // interrupt the CLI between enrollment and connect during onboarding.
+  const result = spawnSync("/usr/bin/pkill", ["-f", companionProcessPattern(port)], {
     encoding: "utf8",
   });
   if (result.status && result.status !== 1) {
@@ -159,7 +166,7 @@ function createNetmeshCompanionManager({ electronDir }) {
       );
     }
 
-    terminateCompanionProcesses();
+    terminateCompanionProcess(port);
     console.info("[netmesh-companion] launch", { companionAppPath, port });
 
     let launchError = null;
@@ -199,7 +206,7 @@ function createNetmeshCompanionManager({ electronDir }) {
         lastError = error.message;
       }
     }
-    terminateCompanionProcesses();
+    terminateCompanionProcess(port);
     throw new Error(`Netmesh companion did not become ready: ${lastError || "unknown error"}`);
   }
 
@@ -217,7 +224,7 @@ function createNetmeshCompanionManager({ electronDir }) {
     // macOS can reject every SMAppService.register() attempted by the same
     // process that just unregistered an older helper. Start a fresh companion
     // process before continuing the pending replacement handshake.
-    terminateCompanionProcesses();
+    terminateCompanionProcess(port);
     await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
@@ -246,9 +253,9 @@ function createNetmeshCompanionManager({ electronDir }) {
     cleanup: () => {
       // The daemon (and VPN) intentionally outlives us; only the control
       // process is torn down.
-      terminateCompanionProcesses();
+      terminateCompanionProcess(port);
     },
   };
 }
 
-module.exports = { createNetmeshCompanionManager };
+module.exports = { companionProcessPattern, createNetmeshCompanionManager };
