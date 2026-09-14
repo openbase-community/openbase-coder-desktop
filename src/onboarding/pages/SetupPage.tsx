@@ -9,6 +9,7 @@ import {
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { OptionCardGrid } from "../components/OptionCardGrid";
+import { NetmeshVpnCard } from "../components/NetmeshVpnCard";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -230,6 +231,10 @@ export function SetupPage({
             ? "Setup completed. Continue to your Openbase account sign-in."
             : "Setup completed. Continue to connect your coding-agent account."}
         </div>
+      )}
+
+      {tailnetProvider === "netmesh" && runningCommand === "setup" && (
+        <NetmeshVpnCard approvalOnly />
       )}
 
       <div className="mt-5 space-y-3">

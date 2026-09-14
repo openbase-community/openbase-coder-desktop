@@ -35,9 +35,11 @@ const APPROVAL_SLIDES: SystemSettingsSlide[] = [
  * Openbase account behind the connect call).
  */
 export function NetmeshVpnCard({
+  approvalOnly = false,
   connecting = false,
   onConnect,
 }: {
+  approvalOnly?: boolean;
   connecting?: boolean;
   onConnect?: () => void;
 } = {}) {
@@ -99,6 +101,8 @@ export function NetmeshVpnCard({
   const needsApproval = helper === "requiresApproval";
   const needsRegister = helper === "notRegistered" || helper === "notFound";
 
+  if (approvalOnly && !needsApproval) return null;
+
   const stateText = connected
     ? `Connected${status?.selfIP ? ` · ${status.selfIP}` : ""}`
     : needsApproval
@@ -134,7 +138,7 @@ export function NetmeshVpnCard({
             Open System Settings
           </SecondaryButton>
         )}
-        {needsRegister && (
+        {!approvalOnly && needsRegister && (
           <PrimaryButton
             disabled={busy}
             onClick={() => void run(() => installer.netmeshRegister())}
@@ -143,7 +147,7 @@ export function NetmeshVpnCard({
             Install the VPN service
           </PrimaryButton>
         )}
-        {helper === "enabled" && !connected && (
+        {!approvalOnly && helper === "enabled" && !connected && (
           <PrimaryButton
             disabled={busy || connecting}
             onClick={() => {
@@ -161,7 +165,7 @@ export function NetmeshVpnCard({
             Connect
           </PrimaryButton>
         )}
-        {connected && (
+        {!approvalOnly && connected && (
           <PrimaryButton
             disabled={busy}
             onClick={() => void run(() => installer.netmeshDisconnect())}
