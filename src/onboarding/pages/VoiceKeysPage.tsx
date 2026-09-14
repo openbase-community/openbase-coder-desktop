@@ -1,6 +1,7 @@
 import { ArrowRight, KeyRound, Loader2, RefreshCw, Save } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -141,6 +142,13 @@ export function VoiceKeysPage({
               Voice keys saved. Restart the backend if it was already running.
             </div>
           )}
+          {selectedAudioProvider === "cartesia" && (
+            <AdvancedDetails>
+              <div className="text-xs leading-5 text-zinc-600">
+                Provider keys are stored in <code className="font-mono">~/.openbase/.env</code>.
+              </div>
+            </AdvancedDetails>
+          )}
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -153,15 +161,9 @@ export function VoiceKeysPage({
             {selectedAudioProvider === "cartesia" ? (
               <>
                 <div>
-                  <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Env file</dt>
-                  <dd className="mt-1 break-words font-mono text-xs text-zinc-800">
-                    ~/.openbase/.env
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Visibility</dt>
+                  <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Storage</dt>
                   <dd className="mt-1 text-zinc-800">
-                    Saved values are never shown back to the UI.
+                    Saved securely on this Mac and never shown back in the app
                   </dd>
                 </div>
               </>

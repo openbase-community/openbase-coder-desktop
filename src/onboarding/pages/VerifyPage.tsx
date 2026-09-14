@@ -1,5 +1,6 @@
 import { Download, Loader2, Play, RefreshCw, Terminal } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { StatusIcon } from "../components/StatusIcon";
@@ -80,80 +81,12 @@ export function VerifyPage({
               )}
               {backendStatusLabel}
             </div>
-            <div className="mt-2 break-words font-mono text-xs text-zinc-600">
-              {backendBaseUrl}/api/health/
-            </div>
-            {versionLine && (
-              <div className="mt-1 font-mono text-xs text-zinc-500">{versionLine}</div>
-            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <SecondaryButton disabled={status === "checking"} onClick={onCheckHealth}>
-              <RefreshCw aria-hidden className="h-4 w-4" />
-              Recheck
-            </SecondaryButton>
-            <SecondaryButton
-              disabled={!canRunUtilities}
-              onClick={() => void onStartCommand("startBackend")}
-            >
-              <Play aria-hidden className="h-4 w-4" />
-              Start backend
-            </SecondaryButton>
-            <SecondaryButton disabled={!canRunUtilities} onClick={() => void onStartCommand("doctor")}>
-              <Terminal aria-hidden className="h-4 w-4" />
-              Doctor
-            </SecondaryButton>
-            <SecondaryButton
-              disabled={!canRunUtilities}
-              onClick={() => void onStartCommand("selfUpdate")}
-            >
-              <Download aria-hidden className="h-4 w-4" />
-              Update CLI
-            </SecondaryButton>
-          </div>
+          <SecondaryButton disabled={status === "checking"} onClick={onCheckHealth}>
+            <RefreshCw aria-hidden className="h-4 w-4" />
+            Recheck
+          </SecondaryButton>
         </div>
-        {cliUpdateAvailable && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            {cliVersions?.update_required
-              ? "A CLI update is required before voice sessions can continue."
-              : "A CLI update is available."}
-            {cliVersions?.cli ? ` Installed version: ${cliVersions.cli}.` : ""}{" "}
-            Use Update CLI to apply it.
-          </div>
-        )}
-      </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        {[
-          {
-            detail: `${backendBaseUrl}/api/health/`,
-            label: "Backend health",
-            ok: status === "ready",
-          },
-          {
-            detail:
-              selectedAudioProvider === "cartesia"
-                ? "~/.openbase/.env"
-                : selectedAudioProviderOption.label,
-            label: "Voice audio",
-            ok: voiceConfigured,
-          },
-          {
-            detail: loginStatus?.path ?? "~/.openbase/auth.json",
-            label: "Openbase login",
-            ok: loggedIn,
-          },
-        ].map((item) => (
-          <div className="rounded-xl border border-zinc-200 bg-white p-4" key={item.label}>
-            <div className="flex items-center gap-2 text-sm font-medium text-zinc-950">
-              <StatusIcon ok={item.ok} />
-              {item.label}
-            </div>
-            <div className="mt-2 break-words font-mono text-xs leading-5 text-zinc-600">
-              {item.detail}
-            </div>
-          </div>
-        ))}
       </div>
 
       {commandError && (
@@ -162,11 +95,79 @@ export function VerifyPage({
         </div>
       )}
 
-      {commandLines.length > 0 && (
-        <div className="mt-5">
-          <TerminalOutput lines={commandLines} />
-        </div>
-      )}
+      <div className="mt-5">
+        <AdvancedDetails>
+          <div className="space-y-1 text-xs text-zinc-600">
+            <div className="break-words font-mono">{backendBaseUrl}/api/health/</div>
+            {versionLine && <div className="font-mono text-zinc-500">{versionLine}</div>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton
+              disabled={!canRunUtilities}
+              onClick={() => void onStartCommand("startBackend")}
+            >
+              <Play aria-hidden className="h-4 w-4" />
+              Start backend
+            </SecondaryButton>
+            <SecondaryButton
+              disabled={!canRunUtilities}
+              onClick={() => void onStartCommand("doctor")}
+            >
+              <Terminal aria-hidden className="h-4 w-4" />
+              Run diagnostics
+            </SecondaryButton>
+            <SecondaryButton
+              disabled={!canRunUtilities}
+              onClick={() => void onStartCommand("selfUpdate")}
+            >
+              <Download aria-hidden className="h-4 w-4" />
+              Update Openbase CLI
+            </SecondaryButton>
+          </div>
+          {cliUpdateAvailable && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              {cliVersions?.update_required
+                ? "A CLI update is required before voice sessions can continue."
+                : "A CLI update is available."}
+              {cliVersions?.cli ? ` Installed version: ${cliVersions.cli}.` : ""}{" "}
+              Use Update Openbase CLI to apply it.
+            </div>
+          )}
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              {
+                detail: `${backendBaseUrl}/api/health/`,
+                label: "Backend health",
+                ok: status === "ready",
+              },
+              {
+                detail:
+                  selectedAudioProvider === "cartesia"
+                    ? "~/.openbase/.env"
+                    : selectedAudioProviderOption.label,
+                label: "Voice audio",
+                ok: voiceConfigured,
+              },
+              {
+                detail: loginStatus?.path ?? "~/.openbase/auth.json",
+                label: "Openbase login",
+                ok: loggedIn,
+              },
+            ].map((item) => (
+              <div className="rounded-xl border border-zinc-200 bg-white p-4" key={item.label}>
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-950">
+                  <StatusIcon ok={item.ok} />
+                  {item.label}
+                </div>
+                <div className="mt-2 break-words font-mono text-xs leading-5 text-zinc-600">
+                  {item.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+        </AdvancedDetails>
+      </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
         <SecondaryButton onClick={onReviewPrerequisites}>

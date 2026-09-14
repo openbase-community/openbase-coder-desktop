@@ -106,7 +106,7 @@ export const backendOptions: SelectableOption<BackendChoice>[] = [
     label: "Codex",
     summary: "OpenAI models, or local models with extra setup.",
     description:
-      "Reuses your Codex CLI sign-in (codex login): setup links it into Openbase's separate Codex home. Requires an OpenAI subscription for hosted models; local models like Qwen need additional Codex/Ollama setup and powerful hardware.",
+      "Uses your Codex sign-in: setup links it into Openbase's separate Codex home, and the next step opens the secure browser sign-in when needed. Requires an OpenAI subscription for hosted models; local models like Qwen need additional Codex/Ollama setup and powerful hardware.",
   },
   {
     id: "claude-code",

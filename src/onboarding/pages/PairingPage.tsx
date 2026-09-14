@@ -1,5 +1,6 @@
 import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { NetmeshVpnCard } from "../components/NetmeshVpnCard";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -103,7 +104,7 @@ export function PairingPage({
                 </div>
                 <div className="mt-1 text-xs leading-5 text-zinc-600">
                   {tailnetProvider === "netmesh"
-                    ? "Use the bundled Openbase VPN. It connects through Openbase Netmesh and does not need a Tailscale app or account."
+                    ? "Use the bundled Openbase VPN. It is built on Tailscale networking technology but does not need a separate Tailscale app or account."
                     : "Use Openbase Direct when this environment cannot install a VPN. It carries Openbase app traffic through an embedded connection."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600">
@@ -226,20 +227,22 @@ export function PairingPage({
               in, then come back here and automatic registration will retry.
             </div>
           )}
-          {registrationFailed && !registrationAuthRequired && (
-            <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-              Automatic registration exited with code {lastExit?.code ?? "unknown"}.
-              Check the output, reconnect the selected private network if needed, then return to
-              this step to retry.
-            </div>
-          )}
           {commandError && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
               {commandError}
             </div>
           )}
 
-          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          {(registrationFailed || commandLines.length > 0) && (
+            <AdvancedDetails>
+              {registrationFailed && !registrationAuthRequired && (
+                <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+                  Automatic registration exited with code {lastExit?.code ?? "unknown"}.
+                </div>
+              )}
+              {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+            </AdvancedDetails>
+          )}
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">

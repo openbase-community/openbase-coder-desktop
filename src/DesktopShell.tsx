@@ -444,9 +444,8 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   }, [loggedIn, page, refreshCloudState]);
 
   useEffect(() => {
-    // The agent sign-in finishes outside the app (browser OAuth or a
-    // terminal `codex login`), so poll the CLI's onboarding status while
-    // the user is on the step.
+    // Agent sign-in finishes in the provider's browser flow, so poll the
+    // CLI's onboarding status while the user is on the step.
     if (page !== "backendAuth") {
       return undefined;
     }

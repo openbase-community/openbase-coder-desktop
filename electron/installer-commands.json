@@ -41,6 +41,13 @@
     "label": "claude login",
     "needsCli": true
   },
+  "codexLogin": {
+    "args": [
+      "login"
+    ],
+    "bin": "codex",
+    "label": "codex login"
+  },
   "restartBackend": {
     "args": [
       "restart"

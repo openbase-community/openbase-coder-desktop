@@ -1,5 +1,6 @@
 import { ArrowRight, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { StatusIcon } from "../components/StatusIcon";
@@ -184,17 +185,21 @@ export function LinuxPairingPage({
               {cloudStateError}
             </div>
           )}
-          {registrationFailed && (
-            <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-              Automatic workspace registration exited with code {lastExit?.code ?? "unknown"}.
-            </div>
-          )}
           {commandError && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
               {commandError}
             </div>
           )}
-          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          {(registrationFailed || commandLines.length > 0) && (
+            <AdvancedDetails>
+              {registrationFailed && (
+                <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+                  Automatic workspace registration exited with code {lastExit?.code ?? "unknown"}.
+                </div>
+              )}
+              {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+            </AdvancedDetails>
+          )}
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
