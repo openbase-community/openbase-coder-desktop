@@ -25,9 +25,28 @@ describe("deriveCloudPairingFacts", () => {
         "The iPhone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
+      mobileRecentlyActive: false,
       mobileOnTailscale: false,
       tailscalePaired: false,
     });
+  });
+
+  it("marks the phone recently active only within the recency window", () => {
+    const now = Date.parse("2026-09-14T20:00:00.000Z");
+    const fresh: CloudOnboardingState = {
+      devices: [{ kind: "mobile", last_seen: "2026-09-14T19:58:00.000Z" }],
+    };
+    const stale: CloudOnboardingState = {
+      devices: [{ kind: "mobile", last_seen: "2026-09-10T12:00:00.000Z" }],
+    };
+    const missing: CloudOnboardingState = { devices: [{ kind: "mobile" }] };
+
+    expect(deriveCloudPairingFacts(fresh, now).mobileRecentlyActive).toBe(true);
+    // A stale row (old install / wiped phone) stays authenticated but not
+    // "recently active", so onboarding keeps showing the download QR.
+    expect(deriveCloudPairingFacts(stale, now).mobileAuthenticated).toBe(true);
+    expect(deriveCloudPairingFacts(stale, now).mobileRecentlyActive).toBe(false);
+    expect(deriveCloudPairingFacts(missing, now).mobileRecentlyActive).toBe(false);
   });
 
   it("prefers explicit cloud diagnostics when available", () => {
@@ -53,6 +72,7 @@ describe("deriveCloudPairingFacts", () => {
         "The iPhone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
+      mobileRecentlyActive: false,
       mobileOnTailscale: false,
       tailscalePaired: false,
     });
@@ -87,6 +107,7 @@ describe("deriveCloudPairingFacts", () => {
       desktopOnTailscale: true,
       diagnosticMessages: ["This Mac has not registered with Openbase Cloud yet."],
       mobileAuthenticated: true,
+      mobileRecentlyActive: false,
       mobileOnTailscale: true,
       tailscalePaired: false,
     });

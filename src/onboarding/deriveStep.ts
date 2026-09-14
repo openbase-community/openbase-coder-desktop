@@ -58,6 +58,16 @@ export type OnboardingFacts = {
   loggedIn: boolean;
   /** At least one mobile device is linked to the account. */
   mobileAuthenticated: boolean;
+  /**
+   * A linked mobile device has checked in RECENTLY (see MOBILE_RECENT_SIGNAL_MS
+   * in cloudPairing). This — not `mobileAuthenticated` — gates leaving the
+   * QR/mobile page: a stale device row from an old install or a wiped phone
+   * keeps `mobileAuthenticated` true forever, which used to skip the QR the
+   * user needs to actually install and route to the phone app. Requiring a
+   * recent signal shows the QR until a phone is genuinely present, and the page
+   * auto-advances the moment the phone reports in.
+   */
+  mobileRecentlyActive: boolean;
   /** User finished phone pairing. Durable flag. */
   pairingAcknowledged: boolean;
   /** Prerequisites were checked and every required one is satisfied. */
@@ -88,7 +98,11 @@ export type OnboardingFacts = {
  * - backendAuth:   the selected coding backend is signed in
  * - voiceKeys:     voice audio configured for the selected provider
  * - login:         Openbase login authenticated
- * - mobile:        a phone is linked to the signed-in account
+ * - mobile:        a phone is linked; during first-run onboarding it must also
+ *                  have checked in recently, so a stale device row (old install
+ *                  / reset phone) keeps showing the download QR instead of
+ *                  skipping it. After pairing is acknowledged, an idle phone no
+ *                  longer bounces the finished install back here.
  * - pairing:       pairing acknowledged after the devices are paired
  * - verify:        backend healthy again (only reachable as the derived step
  *                  when setup succeeded but the backend later went unhealthy)
@@ -113,6 +127,17 @@ export function deriveOnboardingStep(facts: OnboardingFacts): OnboardingStep {
     return "login";
   }
   if (!facts.mobileAuthenticated) {
+    // No phone linked at all (fresh account, or cloud device state wiped) —
+    // always show the download QR so the user can route to the phone app.
+    return "mobile";
+  }
+  if (!facts.mobileRecentlyActive && !facts.pairingAcknowledged) {
+    // A phone row exists but we have not heard from it recently, and the user
+    // has never completed pairing: treat the row as stale (old install / reset
+    // phone) and keep showing the QR until a real phone checks in, instead of
+    // skipping past it on a signal that may be dead. Once pairing has been
+    // acknowledged, a merely-idle phone must NOT bounce a finished install back
+    // here — completion stays durable.
     return "mobile";
   }
   if (!facts.pairingAcknowledged) {
@@ -190,6 +215,7 @@ export function deriveLaunchSettling(
     backendReady: probes.healthResolved ? facts.backendReady : true,
     loggedIn: probes.cliStatusResolved ? facts.loggedIn : true,
     mobileAuthenticated: probes.cloudStateResolved ? facts.mobileAuthenticated : true,
+    mobileRecentlyActive: probes.cloudStateResolved ? facts.mobileRecentlyActive : true,
     pairingAcknowledged: probes.flagsLoaded ? facts.pairingAcknowledged : true,
     requiredPrerequisitesOk: probes.prerequisitesResolved
       ? facts.requiredPrerequisitesOk
