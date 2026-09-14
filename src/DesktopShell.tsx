@@ -872,6 +872,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
             <MobilePage
               cloudStateError={cloudStateError}
               mobileAuthenticated={mobileAuthenticated}
+              mobileRecentlyActive={mobileRecentlyActive}
               onContinue={() => {
                 completeOnboardingStep("mobile");
                 clearPageOverride();
