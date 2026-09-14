@@ -10,7 +10,7 @@ const contractUrl = pathToFileURL(
 test("Netmesh prebuilt contract rejects stale and malformed builds", async () => {
   const { MINIMUM_NETMESH_BUILD, assertSupportedNetmeshBuild } = await import(contractUrl);
 
-  assert.equal(assertSupportedNetmeshBuild(` ${MINIMUM_NETMESH_BUILD}\n`, "companion"), 15);
+  assert.equal(assertSupportedNetmeshBuild(` ${MINIMUM_NETMESH_BUILD}\n`, "companion"), 16);
   assert.throws(
     () => assertSupportedNetmeshBuild(String(MINIMUM_NETMESH_BUILD - 1), "companion"),
     /too old/,
@@ -28,6 +28,22 @@ test("Netmesh prebuilts follow the package release channel", async () => {
   );
   assert.equal(
     resolveNetmeshPrebuiltPrefix("0.1.18-staging.20260913171839", "test-prefix"),
+    "test-prefix",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix(
+      "0.1.18",
+      undefined,
+      "https://app-staging.openbase.cloud/",
+    ),
+    "mac-staging",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18", undefined, "https://app.openbase.cloud"),
+    "mac",
+  );
+  assert.equal(
+    resolveNetmeshPrebuiltPrefix("0.1.18", "test-prefix", "https://app-staging.openbase.cloud"),
     "test-prefix",
   );
 });
