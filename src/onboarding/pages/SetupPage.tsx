@@ -113,9 +113,17 @@ export function SetupPage({
 
   return (
     <PageShell
-      eyebrow="Step 3"
-      heading="Set up Openbase Cloud"
-      support="Openbase Cloud is the normal setup path: managed Claude Code and managed voice audio. No provider keys or separate AI subscriptions are needed."
+      eyebrow="Coding setup"
+      heading={
+        setupBackend === NORMAL_ONBOARDING_BACKEND
+          ? "Set up Openbase Cloud"
+          : "Set up your coding agent"
+      }
+      support={
+        setupBackend === NORMAL_ONBOARDING_BACKEND
+          ? "Openbase Cloud is the normal setup path: managed Claude Code and managed voice audio. Your Openbase account is the only sign-in you will need."
+          : "Openbase will use your existing coding-agent subscription and manage voice audio. You will sign in once to Openbase and once to your selected coding agent."
+      }
     >
       <div className="mb-5 space-y-5">
         <section>
@@ -218,7 +226,9 @@ export function SetupPage({
       )}
       {setupSucceeded && (
         <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Setup completed. Continue to sign in to Openbase Cloud.
+          {setupBackend === NORMAL_ONBOARDING_BACKEND
+            ? "Setup completed. Continue to your Openbase account sign-in."
+            : "Setup completed. Continue to connect your coding-agent account."}
         </div>
       )}
 

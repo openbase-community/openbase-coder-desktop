@@ -3,6 +3,7 @@ import type {
   BackendAuthStatus,
   BackendChoice,
   CliAudioStatus,
+  CliRuntimeReadiness,
   CliTailscaleSelf,
   CliTailscaleServe,
   CliVersions,
@@ -20,6 +21,7 @@ export type CliOnboardingStatus = {
   audio: CliAudioStatus | null;
   backendAuth: BackendAuthStatus | null;
   loginStatus: LoginStatus | null;
+  runtime: CliRuntimeReadiness | null;
   tailscaleSelf: CliTailscaleSelf | null;
   tailscaleServe: CliTailscaleServe | null;
   versions: CliVersions | null;
@@ -74,10 +76,26 @@ export function parseCliOnboardingStatus(payload: unknown): CliOnboardingStatus 
         }
       : null;
 
+  const runtimeRaw = asObject(root.runtime);
+  const runtime: CliRuntimeReadiness | null =
+    runtimeRaw &&
+    typeof runtimeRaw.backend_ready === "boolean" &&
+    typeof runtimeRaw.livekit_server_ready === "boolean" &&
+    typeof runtimeRaw.livekit_agent_ready === "boolean" &&
+    typeof runtimeRaw.voice_ready === "boolean"
+      ? {
+          backend_ready: runtimeRaw.backend_ready,
+          livekit_agent_ready: runtimeRaw.livekit_agent_ready,
+          livekit_server_ready: runtimeRaw.livekit_server_ready,
+          voice_ready: runtimeRaw.voice_ready,
+        }
+      : null;
+
   return {
     audio,
     backendAuth,
     loginStatus,
+    runtime,
     tailscaleSelf: (asObject(root.tailscale_self) as CliTailscaleSelf | null) ?? null,
     tailscaleServe: (asObject(root.tailscale_serve) as CliTailscaleServe | null) ?? null,
     versions: (asObject(root.versions) as CliVersions | null) ?? null,
@@ -129,4 +147,9 @@ export function audioProviderChoice(audio: CliAudioStatus | null): AudioProvider
     return "local";
   }
   return "openbase-cloud";
+}
+
+/** Whether onboarding needs a separate voice-provider configuration step. */
+export function voiceConfigurationReady(audio: CliAudioStatus | null): boolean {
+  return audioProviderChoice(audio) !== "cartesia" || audio?.voice_ready === true;
 }

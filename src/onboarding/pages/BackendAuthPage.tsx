@@ -54,7 +54,7 @@ export function BackendAuthPage({
 
   return (
     <PageShell
-      eyebrow="Step 4"
+      eyebrow="Bring your own agent"
       heading={`Sign in to ${label}`}
       support={`Openbase runs coding sessions through ${label}, which needs its own sign-in. This page updates automatically once you finish.`}
     >

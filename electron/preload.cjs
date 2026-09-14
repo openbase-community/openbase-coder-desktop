@@ -124,6 +124,9 @@ const installerApi = {
   openTailscaleApp() {
     return ipcRenderer.invoke("openbase:installer:open-tailscale-app");
   },
+  openLoginItemsSettings() {
+    return ipcRenderer.invoke("openbase:installer:open-login-items-settings");
+  },
   tailscaleIdentity() {
     return ipcRenderer.invoke("openbase:onboarding:tailscale-identity");
   },

@@ -25,8 +25,15 @@ export function hasAdvertisedTailscale(device: CloudOnboardingDevice) {
 export function privateNetworkPairingReady(
   devicesPaired: boolean,
   routesHealthy: boolean | undefined,
+  backendReady: boolean,
+  voiceRuntimeReady: boolean | undefined,
 ): boolean {
-  return devicesPaired && routesHealthy === true;
+  return (
+    devicesPaired &&
+    routesHealthy === true &&
+    backendReady &&
+    voiceRuntimeReady === true
+  );
 }
 
 export function localBackendReadyForOnboarding(status: string): boolean {

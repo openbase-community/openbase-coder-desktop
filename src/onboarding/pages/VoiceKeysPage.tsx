@@ -46,7 +46,7 @@ export function VoiceKeysPage({
 }) {
   return (
     <PageShell
-      eyebrow="Step 5"
+      eyebrow="Voice provider"
       heading="Configure voice audio"
       support={
         selectedAudioProvider === "cartesia"

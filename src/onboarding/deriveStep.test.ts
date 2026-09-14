@@ -6,9 +6,32 @@ import {
   deriveOnboardingPageStates,
   deriveOnboardingStep,
   resolveOnboardingPage,
+  visibleOnboardingFlow,
   type LaunchProbes,
   type OnboardingFacts,
 } from "./deriveStep";
+
+describe("visibleOnboardingFlow", () => {
+  it("shows one account sign-in for managed Openbase Cloud", () => {
+    const pages = visibleOnboardingFlow("openbase-cloud", "openbase-cloud");
+    expect(pages).toContain("login");
+    expect(pages).not.toContain("backendAuth");
+    expect(pages).not.toContain("voiceKeys");
+  });
+
+  it("adds exactly one agent sign-in for bring-your-own coding", () => {
+    const pages = visibleOnboardingFlow("claude-code", "openbase-cloud");
+    expect(pages.filter((page) => page === "login" || page === "backendAuth")).toEqual([
+      "backendAuth",
+      "login",
+    ]);
+  });
+
+  it("shows voice keys only when the selected provider needs them", () => {
+    expect(visibleOnboardingFlow("codex", "cartesia")).toContain("voiceKeys");
+    expect(visibleOnboardingFlow("codex", "local")).not.toContain("voiceKeys");
+  });
+});
 
 /** A machine where every onboarding goal is satisfied. */
 const allDone: OnboardingFacts = {

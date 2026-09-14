@@ -47,6 +47,16 @@ export type CliTailscaleServe = {
   openbase_url?: string | null;
 };
 
+// Live service facts from the CLI onboarding payload. A registered private
+// address is not enough to place a voice call: the API and both LiveKit
+// processes must be running on the selected computer.
+export type CliRuntimeReadiness = {
+  backend_ready: boolean;
+  livekit_agent_ready: boolean;
+  livekit_server_ready: boolean;
+  voice_ready: boolean;
+};
+
 export type LoginStatus = {
   authenticated: boolean;
   /** Human-readable reason when the login is expired or unvalidated. */
@@ -265,6 +275,7 @@ export type InstallerApi = {
   onEvent(callback: (event: InstallerEvent) => void): () => void;
   openTailscaleApp(): Promise<{ error?: string; ok: boolean; opened?: "app" | "download" }>;
   openTailscaleDownload(): Promise<{ error?: string; ok: boolean }>;
+  openLoginItemsSettings(): Promise<{ error?: string; ok: boolean }>;
   start(
     commandId: InstallerCommand,
     options?: {

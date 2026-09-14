@@ -80,7 +80,7 @@ export function PrerequisitesPage({
 
   return (
     <PageShell
-      eyebrow="Step 2"
+      eyebrow="Mac prerequisites"
       heading="Check runtime readiness"
       support="The desktop app activates its bundled Openbase CLI, then configures private phone-to-computer networking."
     >

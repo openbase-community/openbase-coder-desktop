@@ -7,6 +7,7 @@ import { StatusIcon } from "../components/StatusIcon";
 import { TerminalOutput } from "../components/TerminalOutput";
 import { PulsingDot } from "../motion";
 import type {
+  CliRuntimeReadiness,
   InstallerCommand,
   TailnetProviderChoice,
   TailscaleIdentityStatus,
@@ -16,6 +17,7 @@ export function PairingPage({
   cloudStateError,
   commandError,
   commandLines,
+  backendReady,
   desktopCloudRegistered,
   desktopOnTailscale,
   lastExit,
@@ -28,6 +30,7 @@ export function PairingPage({
   onRefreshTailscale,
   pairingDiagnosticMessages,
   registrationRunning,
+  runtime,
   tailscaleIdentity,
   tailscalePaired,
   tailnetProvider,
@@ -35,6 +38,7 @@ export function PairingPage({
   cloudStateError: string | null;
   commandError: string | null;
   commandLines: string[];
+  backendReady: boolean;
   desktopCloudRegistered: boolean;
   desktopOnTailscale: boolean;
   lastExit: { code: number | null; commandId: InstallerCommand } | null;
@@ -47,6 +51,7 @@ export function PairingPage({
   onRefreshTailscale: () => void;
   pairingDiagnosticMessages: string[];
   registrationRunning: boolean;
+  runtime: CliRuntimeReadiness | null;
   tailscaleIdentity: TailscaleIdentityStatus | null;
   tailscalePaired: boolean;
   tailnetProvider: TailnetProviderChoice;
@@ -84,7 +89,7 @@ export function PairingPage({
 
   return (
     <PageShell
-      eyebrow="Step 8"
+      eyebrow="Private pairing"
       heading="Pair your devices privately"
       support="Openbase connects this Mac and your phone through the networking option you selected, then registers their private addresses so they can find each other."
     >
@@ -180,8 +185,8 @@ export function PairingPage({
 
           {tailscalePaired ? (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              This Mac is registered and both devices are privately paired.
-              Continue to verify.
+              Both devices can see each other, and this Mac&apos;s backend and
+              voice services are ready. Continue to the final check.
             </div>
           ) : pairingDiagnosticMessages.length > 0 ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -301,6 +306,26 @@ export function PairingPage({
               <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
                 <StatusIcon ok={tailscalePaired} />
                 {tailscalePaired ? "Paired" : "Not paired"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Openbase backend</dt>
+              <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
+                <StatusIcon ok={backendReady} />
+                {backendReady ? "Ready" : "Starting"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">LiveKit voice services</dt>
+              <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
+                <StatusIcon ok={runtime?.voice_ready === true} />
+                {!runtime
+                  ? "Checking"
+                  : runtime.voice_ready
+                    ? "Ready"
+                    : runtime.livekit_server_ready
+                      ? "Agent starting"
+                      : "Server starting"}
               </dd>
             </div>
             {tailscaleIdentity?.tailnet && (

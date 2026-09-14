@@ -65,7 +65,7 @@ export function VerifyPage({
     .join(" · ");
   return (
     <PageShell
-      eyebrow="Step 9"
+      eyebrow="Final check"
       heading="Verify the backend"
       support="The last step is confirming the local service is healthy and that voice audio and Openbase login are configured."
     >

@@ -34,9 +34,9 @@ export function LoginPage({
 }) {
   return (
     <PageShell
-      eyebrow="Step 6"
+      eyebrow="Openbase account"
       heading="Sign in to Openbase"
-      support="Sign in to start or continue your Openbase Cloud trial. This account powers managed Claude Code and cloud voice audio for the normal setup path."
+      support="This one Openbase account links your Mac and iPhone and provides cloud voice audio. If you chose Openbase Cloud for coding, the same sign-in also activates your managed coding agent."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -79,7 +79,7 @@ export function LoginPage({
           )}
           {loggedIn && (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Signed in. Continue to verify the backend.
+              Signed in. Continue to link your iPhone.
             </div>
           )}
 

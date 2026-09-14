@@ -1,8 +1,31 @@
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PrimaryButton } from "./PrimaryButton";
+import { SecondaryButton } from "./SecondaryButton";
+import {
+  SystemSettingsGuide,
+  type SystemSettingsSlide,
+} from "./SystemSettingsGuide";
+import allowBackgroundImage from "../../assets/onboarding/allow-openbase-netmesh-background.png";
+import authorizeChangeImage from "../../assets/onboarding/authorize-login-items-change.png";
 import type { NetmeshCompanionStatus } from "../types";
+
+const APPROVAL_SLIDES: SystemSettingsSlide[] = [
+  {
+    alt: "Login Items and Extensions with OpenbaseNetmeshCompanion enabled under Allow in the Background",
+    body: "Find OpenbaseNetmeshCompanion under Allow in the Background and turn its switch on.",
+    imageClassName: "object-bottom",
+    src: allowBackgroundImage,
+    title: "Turn on the Openbase background item",
+  },
+  {
+    alt: "macOS Login Items authorization sheet asking for the Mac password",
+    body: "macOS may ask for this Mac's password. Enter it and choose Modify Settings.",
+    src: authorizeChangeImage,
+    title: "Approve the System Settings change",
+  },
+];
 
 /**
  * Setup card for the Openbase VPN (netmesh) on macOS. Drives the netmesh
@@ -57,6 +80,18 @@ export function NetmeshVpnCard({
     [],
   );
 
+  const openLoginItemsSettings = useCallback(async () => {
+    setError(null);
+    try {
+      const result = await installer?.openLoginItemsSettings();
+      if (result && !result.ok) {
+        setError(result.error ?? "Could not open Login Items & Extensions.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [installer]);
+
   if (!installer?.netmeshStatus) return null;
 
   const helper = status?.helper ?? "unknown";
@@ -79,10 +114,13 @@ export function NetmeshVpnCard({
       <div className="text-sm font-medium text-zinc-950">Openbase VPN</div>
       <div className="mt-1 text-xs leading-5 text-zinc-600">{stateText}</div>
       {needsApproval && (
-        <div className="mt-1 text-xs leading-5 text-zinc-600">
-          Approve &ldquo;Openbase Netmesh&rdquo; under System Settings &rsaquo;
-          General &rsaquo; Login Items &amp; Extensions, then come back here.
-        </div>
+        <>
+          <div className="mt-1 text-xs leading-5 text-zinc-600">
+            Openbase will keep checking and continue automatically after you
+            enable the background item.
+          </div>
+          <SystemSettingsGuide slides={APPROVAL_SLIDES} />
+        </>
       )}
       {error && (
         <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-900">
@@ -90,6 +128,12 @@ export function NetmeshVpnCard({
         </div>
       )}
       <div className="mt-3 flex flex-wrap gap-3">
+        {needsApproval && (
+          <SecondaryButton onClick={() => void openLoginItemsSettings()}>
+            <ExternalLink aria-hidden className="h-4 w-4" />
+            Open System Settings
+          </SecondaryButton>
+        )}
         {needsRegister && (
           <PrimaryButton
             disabled={busy}

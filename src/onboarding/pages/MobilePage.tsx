@@ -18,7 +18,7 @@ export function MobilePage({
 }) {
   return (
     <PageShell
-      eyebrow="Step 7"
+      eyebrow="iPhone"
       heading="Get Openbase on your iPhone"
       support="Scan the QR code to download the Openbase iOS app, then sign in with the same account. This page updates automatically once your phone is linked."
     >
