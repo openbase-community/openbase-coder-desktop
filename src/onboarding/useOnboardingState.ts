@@ -408,6 +408,7 @@ export function useOnboardingState(
     refreshCloudState,
     refreshTailscaleIdentity,
     registerLoginAttempt,
+    runtime: cliStatus?.runtime ?? null,
     saveVoiceKeys,
     setVoiceKeyInputs,
     status,

@@ -1,5 +1,6 @@
 import { ArrowRight, LogIn, RefreshCw, Square } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -34,9 +35,9 @@ export function LoginPage({
 }) {
   return (
     <PageShell
-      eyebrow="Step 6"
+      eyebrow="Openbase account"
       heading="Sign in to Openbase"
-      support="Sign in to start or continue your Openbase Cloud trial. This account powers managed Claude Code and cloud voice audio for the normal setup path."
+      support="This one Openbase account links your Mac and iPhone and provides cloud voice audio. If you chose Openbase Cloud for coding, the same sign-in also activates your managed coding agent."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -52,7 +53,7 @@ export function LoginPage({
                 onClick={() => void onStartCommand("login")}
               >
                 <LogIn aria-hidden className="h-4 w-4" />
-                {loginAttempts === 0 ? "Run login" : "Run login again"}
+                {loginAttempts === 0 ? "Sign in" : "Sign in again"}
               </PrimaryButton>
             )}
             <SecondaryButton onClick={onRefreshLoginStatus}>
@@ -79,11 +80,29 @@ export function LoginPage({
           )}
           {loggedIn && (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Signed in. Continue to verify the backend.
+              Signed in. Continue to link your iPhone.
             </div>
           )}
 
-          <TerminalOutput lines={commandLines} />
+          <AdvancedDetails>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  Authentication file
+                </dt>
+                <dd className="mt-1 break-words font-mono text-xs text-zinc-800">
+                  {loginStatus?.path ?? "~/.openbase/auth.json"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  Sign-in attempts
+                </dt>
+                <dd className="mt-1 text-zinc-800">{loginAttempts}</dd>
+              </div>
+            </dl>
+            {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          </AdvancedDetails>
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -99,16 +118,6 @@ export function LoginPage({
                     ? "Login expired"
                     : "Not signed in"}
               </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Auth file</dt>
-              <dd className="mt-1 break-words font-mono text-xs text-zinc-800">
-                {loginStatus?.path ?? "~/.openbase/auth.json"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Login attempts</dt>
-              <dd className="mt-1 text-zinc-800">{loginAttempts}</dd>
             </div>
           </dl>
         </aside>

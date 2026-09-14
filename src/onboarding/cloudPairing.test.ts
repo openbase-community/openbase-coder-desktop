@@ -105,11 +105,14 @@ describe("deriveCloudPairingFacts", () => {
 });
 
 describe("privateNetworkPairingReady", () => {
-  it("requires both cloud rendezvous and healthy local routes", () => {
-    expect(privateNetworkPairingReady(true, true)).toBe(true);
-    expect(privateNetworkPairingReady(true, false)).toBe(false);
-    expect(privateNetworkPairingReady(true, undefined)).toBe(false);
-    expect(privateNetworkPairingReady(false, true)).toBe(false);
+  it("requires cloud rendezvous, healthy routes, the backend, and voice services", () => {
+    expect(privateNetworkPairingReady(true, true, true, true)).toBe(true);
+    expect(privateNetworkPairingReady(true, false, true, true)).toBe(false);
+    expect(privateNetworkPairingReady(true, undefined, true, true)).toBe(false);
+    expect(privateNetworkPairingReady(false, true, true, true)).toBe(false);
+    expect(privateNetworkPairingReady(true, true, false, true)).toBe(false);
+    expect(privateNetworkPairingReady(true, true, true, false)).toBe(false);
+    expect(privateNetworkPairingReady(true, true, true, undefined)).toBe(false);
   });
 });
 

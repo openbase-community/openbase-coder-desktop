@@ -1,5 +1,6 @@
 import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { NetmeshVpnCard } from "../components/NetmeshVpnCard";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -7,6 +8,7 @@ import { StatusIcon } from "../components/StatusIcon";
 import { TerminalOutput } from "../components/TerminalOutput";
 import { PulsingDot } from "../motion";
 import type {
+  CliRuntimeReadiness,
   InstallerCommand,
   TailnetProviderChoice,
   TailscaleIdentityStatus,
@@ -16,6 +18,7 @@ export function PairingPage({
   cloudStateError,
   commandError,
   commandLines,
+  backendReady,
   desktopCloudRegistered,
   desktopOnTailscale,
   lastExit,
@@ -28,6 +31,7 @@ export function PairingPage({
   onRefreshTailscale,
   pairingDiagnosticMessages,
   registrationRunning,
+  runtime,
   tailscaleIdentity,
   tailscalePaired,
   tailnetProvider,
@@ -35,6 +39,7 @@ export function PairingPage({
   cloudStateError: string | null;
   commandError: string | null;
   commandLines: string[];
+  backendReady: boolean;
   desktopCloudRegistered: boolean;
   desktopOnTailscale: boolean;
   lastExit: { code: number | null; commandId: InstallerCommand } | null;
@@ -47,6 +52,7 @@ export function PairingPage({
   onRefreshTailscale: () => void;
   pairingDiagnosticMessages: string[];
   registrationRunning: boolean;
+  runtime: CliRuntimeReadiness | null;
   tailscaleIdentity: TailscaleIdentityStatus | null;
   tailscalePaired: boolean;
   tailnetProvider: TailnetProviderChoice;
@@ -84,7 +90,7 @@ export function PairingPage({
 
   return (
     <PageShell
-      eyebrow="Step 8"
+      eyebrow="Private pairing"
       heading="Pair your devices privately"
       support="Openbase connects this Mac and your phone through the networking option you selected, then registers their private addresses so they can find each other."
     >
@@ -98,7 +104,7 @@ export function PairingPage({
                 </div>
                 <div className="mt-1 text-xs leading-5 text-zinc-600">
                   {tailnetProvider === "netmesh"
-                    ? "Use the bundled Openbase VPN. It connects through Openbase Netmesh and does not need a Tailscale app or account."
+                    ? "Use the bundled Openbase VPN. It is built on Tailscale networking technology but does not need a separate Tailscale app or account."
                     : "Use Openbase Direct when this environment cannot install a VPN. It carries Openbase app traffic through an embedded connection."}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600">
@@ -180,8 +186,8 @@ export function PairingPage({
 
           {tailscalePaired ? (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              This Mac is registered and both devices are privately paired.
-              Continue to verify.
+              Both devices can see each other, and this Mac&apos;s backend and
+              voice services are ready. Continue to the final check.
             </div>
           ) : pairingDiagnosticMessages.length > 0 ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -221,20 +227,22 @@ export function PairingPage({
               in, then come back here and automatic registration will retry.
             </div>
           )}
-          {registrationFailed && !registrationAuthRequired && (
-            <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-              Automatic registration exited with code {lastExit?.code ?? "unknown"}.
-              Check the output, reconnect the selected private network if needed, then return to
-              this step to retry.
-            </div>
-          )}
           {commandError && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
               {commandError}
             </div>
           )}
 
-          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          {(registrationFailed || commandLines.length > 0) && (
+            <AdvancedDetails>
+              {registrationFailed && !registrationAuthRequired && (
+                <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+                  Automatic registration exited with code {lastExit?.code ?? "unknown"}.
+                </div>
+              )}
+              {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+            </AdvancedDetails>
+          )}
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -301,6 +309,26 @@ export function PairingPage({
               <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
                 <StatusIcon ok={tailscalePaired} />
                 {tailscalePaired ? "Paired" : "Not paired"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Openbase backend</dt>
+              <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
+                <StatusIcon ok={backendReady} />
+                {backendReady ? "Ready" : "Starting"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">LiveKit voice services</dt>
+              <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
+                <StatusIcon ok={runtime?.voice_ready === true} />
+                {!runtime
+                  ? "Checking"
+                  : runtime.voice_ready
+                    ? "Ready"
+                    : runtime.livekit_server_ready
+                      ? "Agent starting"
+                      : "Server starting"}
               </dd>
             </div>
             {tailscaleIdentity?.tailnet && (

@@ -1,6 +1,7 @@
 import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { ManualFallback } from "../components/ManualFallback";
 import { PageShell } from "../components/PageShell";
 import { PrerequisiteAction } from "../components/PrerequisiteAction";
@@ -80,7 +81,7 @@ export function PrerequisitesPage({
 
   return (
     <PageShell
-      eyebrow="Step 2"
+      eyebrow="Mac prerequisites"
       heading="Check runtime readiness"
       support="The desktop app activates its bundled Openbase CLI, then configures private phone-to-computer networking."
     >
@@ -119,12 +120,12 @@ export function PrerequisitesPage({
       {showConnectionChoice && (
         <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-4">
           <div className="text-sm font-medium text-zinc-950">
-            Can this environment support a VPN?
+            Connect your phone to this Mac
           </div>
           <div className="mt-1 text-xs leading-5 text-zinc-600">
-            Choose the VPN for full feature access, including opening websites
-            your agents create in a phone browser. Choose Direct only when a
-            managed or restricted environment cannot install a VPN.
+            The full Openbase experience requires a VPN. Openbase VPN is built
+            on Tailscale and lets your phone securely reach this Mac, including
+            sites your agents create.
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {tailnetOptions.map((option) => {
@@ -143,12 +144,15 @@ export function PrerequisitesPage({
                   type="button"
                 >
                   <div className="text-sm font-semibold text-zinc-950">
-                    {option.requires_vpn ? "Yes — " : "No — "}
                     {option.name}
-                    {option.recommended ? " (recommended)" : ""}
+                    {option.recommended ? " (Recommended)" : ""}
                   </div>
                   <div className="mt-1 text-xs leading-5 text-zinc-600">
-                    {option.summary}
+                    {option.provider === "netmesh"
+                      ? "Full experience. Requires a one-time Mac approval."
+                      : option.provider === "netmesh-tsnet"
+                        ? "Use only when VPNs are blocked. Core Openbase features work, but agent-created sites will not open in other phone apps."
+                        : option.summary}
                   </div>
                 </button>
               );
@@ -214,7 +218,9 @@ export function PrerequisitesPage({
 
       {(missingPrerequisites.length > 0 || !hasInstaller) && (
         <div className="mt-5">
-          <ManualFallback />
+          <AdvancedDetails>
+            <ManualFallback />
+          </AdvancedDetails>
         </div>
       )}
 

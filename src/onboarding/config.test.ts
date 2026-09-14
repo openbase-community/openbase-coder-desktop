@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import installerCommands from "../../electron/installer-commands.json";
 import {
   DEFAULT_AUDIO_PROVIDER,
   DEFAULT_SETUP_BACKEND,
+  commandLabel,
   existingMachineBackendOptions,
   filterTailnetOptionsForInstall,
   NORMAL_ONBOARDING_AUDIO_PROVIDER,
@@ -46,5 +48,14 @@ describe("onboarding setup defaults", () => {
       "codex",
       "claude-code",
     ]);
+  });
+
+  it("registers the in-app Codex sign-in command", () => {
+    expect(commandLabel("codexLogin")).toBe("codex login");
+    expect(installerCommands.codexLogin).toEqual({
+      args: ["login"],
+      bin: "codex",
+      label: "codex login",
+    });
   });
 });

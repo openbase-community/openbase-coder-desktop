@@ -9,6 +9,8 @@ import {
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { OptionCardGrid } from "../components/OptionCardGrid";
+import { NetmeshVpnCard } from "../components/NetmeshVpnCard";
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -113,9 +115,17 @@ export function SetupPage({
 
   return (
     <PageShell
-      eyebrow="Step 3"
-      heading="Set up Openbase Cloud"
-      support="Openbase Cloud is the normal setup path: managed Claude Code and managed voice audio. No provider keys or separate AI subscriptions are needed."
+      eyebrow="Coding setup"
+      heading={
+        setupBackend === NORMAL_ONBOARDING_BACKEND
+          ? "Set up Openbase Cloud"
+          : "Set up your coding agent"
+      }
+      support={
+        setupBackend === NORMAL_ONBOARDING_BACKEND
+          ? "Openbase Cloud is the normal setup path: managed Claude Code and managed voice audio. Your Openbase account is the only sign-in you will need."
+          : "Openbase will use your existing coding-agent subscription and manage voice audio. You will sign in once to Openbase and once to your selected coding agent."
+      }
     >
       <div className="mb-5 space-y-5">
         <section>
@@ -172,20 +182,6 @@ export function SetupPage({
           )}
         </section>
 
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-          <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs text-zinc-800">
-            {setupCommand}
-          </code>
-          <button
-            aria-label="Setup help"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-[#18498B]/30 hover:text-[#18498B]"
-            onClick={() => setShowSetupHelp(true)}
-            title="Setup help"
-            type="button"
-          >
-            <CircleHelp aria-hidden className="h-4 w-4" />
-          </button>
-        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -210,21 +206,42 @@ export function SetupPage({
           {commandError}
         </div>
       )}
-      {lastExit && lastExit.code !== 0 && (
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {commandLabel(lastExit.commandId)} exited with code {lastExit.code ?? "unknown"}.
-          Setup output remains below for diagnostics.
-        </div>
-      )}
       {setupSucceeded && (
         <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Setup completed. Continue to sign in to Openbase Cloud.
+          {setupBackend === NORMAL_ONBOARDING_BACKEND
+            ? "Setup completed. Continue to your Openbase account sign-in."
+            : "Setup completed. Continue to connect your coding-agent account."}
         </div>
+      )}
+
+      {tailnetProvider === "netmesh" && runningCommand === "setup" && (
+        <NetmeshVpnCard approvalOnly />
       )}
 
       <div className="mt-5 space-y-3">
         <SetupStepChecklist steps={setupSteps} />
-        <TerminalOutput lines={commandLines} />
+        <AdvancedDetails>
+          <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2">
+            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs text-zinc-800">
+              {setupCommand}
+            </code>
+            <button
+              aria-label="Setup help"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-[#18498B]/30 hover:text-[#18498B]"
+              onClick={() => setShowSetupHelp(true)}
+              title="Setup help"
+              type="button"
+            >
+              <CircleHelp aria-hidden className="h-4 w-4" />
+            </button>
+          </div>
+          {lastExit && lastExit.code !== 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {commandLabel(lastExit.commandId)} exited with code {lastExit.code ?? "unknown"}.
+            </div>
+          )}
+          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+        </AdvancedDetails>
       </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -328,27 +345,26 @@ export function SetupPage({
                     Before setup runs
                   </h3>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Setup changes agent permissions on this Mac. Please review.
+                    Review how Openbase runs coding agents on this Mac.
                   </p>
                 </div>
               </div>
 
-              <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-600">
-                <p>
-                  Setup configures Openbase&apos;s dedicated agent homes
-                  (~/.openbase) to run coding agents with{" "}
-                  <span className="font-semibold text-zinc-900">
-                    all permissions enabled
-                  </span>{" "}
-                  — no approval prompts, full file and network access — so voice
-                  coding can work hands-free.
-                </p>
-                <p>
-                  It also adds the Openbase &ldquo;super-agents&rdquo; MCP server to
-                  your normal Codex and Claude Code configs. You can remove those
-                  entries later; re-running setup adds them back.
-                </p>
-              </div>
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-zinc-600">
+                <li>
+                  Agents started by Openbase can read and change files and use
+                  the network so they can complete spoken coding tasks.
+                </li>
+                <li>
+                  Openbase applies its instructions and permission posture to
+                  the sessions it starts and uses Openbase&apos;s approval controls
+                  instead of each coding CLI&apos;s native prompts.
+                </li>
+                <li>
+                  macOS still asks separately before an agent can use protected
+                  locations such as Desktop, Documents, or Downloads.
+                </li>
+              </ul>
 
               <div className="mt-5 flex flex-wrap justify-end gap-3">
                 <SecondaryButton onClick={() => setShowSetupWarning(false)}>

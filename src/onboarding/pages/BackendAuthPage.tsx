@@ -1,5 +1,6 @@
 import { ArrowRight, KeyRound, RefreshCw, Square } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -22,9 +23,8 @@ export function backendAuthLabel(backendAuth: BackendAuthStatus | null): string 
 
 /**
  * Sign in to the coding backend chosen during setup. Direct Claude Code sign-in
- * runs through the installer bridge (`openbase-coder claude login`); Codex uses
- * the user's normal `codex login` in a terminal; Openbase Cloud uses the
- * Openbase account login on the next step.
+ * runs through the installer bridge. Openbase Cloud uses the Openbase account
+ * login on the next step.
  */
 export function BackendAuthPage({
   backendAuth,
@@ -54,15 +54,15 @@ export function BackendAuthPage({
 
   return (
     <PageShell
-      eyebrow="Step 4"
+      eyebrow="Bring your own agent"
       heading={`Sign in to ${label}`}
       support={`Openbase runs coding sessions through ${label}, which needs its own sign-in. This page updates automatically once you finish.`}
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          {backend === "claude_code" && (
+          {(backend === "claude_code" || backend === "codex") && (
             <div className="flex flex-wrap gap-3">
-              {runningCommand === "claudeLogin" ? (
+              {runningCommand === (backend === "codex" ? "codexLogin" : "claudeLogin") ? (
                 <SecondaryButton onClick={onCancelCommand}>
                   <Square aria-hidden className="h-4 w-4" />
                   Stop sign-in
@@ -70,10 +70,12 @@ export function BackendAuthPage({
               ) : (
                 <PrimaryButton
                   disabled={!canRunUtilities}
-                  onClick={() => void onStartCommand("claudeLogin")}
+                  onClick={() =>
+                    void onStartCommand(backend === "codex" ? "codexLogin" : "claudeLogin")
+                  }
                 >
                   <KeyRound aria-hidden className="h-4 w-4" />
-                  Sign in to Claude Code
+                  Sign in to {label}
                 </PrimaryButton>
               )}
               <SecondaryButton onClick={onRecheck}>
@@ -81,25 +83,6 @@ export function BackendAuthPage({
                 Recheck status
               </SecondaryButton>
             </div>
-          )}
-
-          {backend === "codex" && (
-            <>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                Open Terminal and run{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-zinc-800">
-                  codex login
-                </code>
-                , then finish the browser sign-in. Setup already linked your
-                Codex login into Openbase, so no other step is needed.
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <SecondaryButton onClick={onRecheck}>
-                  <RefreshCw aria-hidden className="h-4 w-4" />
-                  Recheck status
-                </SecondaryButton>
-              </div>
-            </>
           )}
 
           {backend !== "claude_code" && backend !== "codex" && (
@@ -117,11 +100,21 @@ export function BackendAuthPage({
           )}
           {backendAuthReady && (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              {label} is signed in. Continue to voice setup.
+              {label} is signed in. Continue to your Openbase account.
             </div>
           )}
 
-          {backend === "claude_code" && <TerminalOutput lines={commandLines} />}
+          <AdvancedDetails>
+            {(backend === "claude_code" || backend === "codex") && (
+              <div className="text-xs leading-5 text-zinc-600">
+                Manual sign-in command:{" "}
+                <code className="font-mono">
+                  {backend === "codex" ? "codex login" : "openbase-coder claude login"}
+                </code>
+              </div>
+            )}
+            {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          </AdvancedDetails>
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -140,23 +133,13 @@ export function BackendAuthPage({
                 {backendAuthReady ? "Signed in" : "Not signed in"}
               </dd>
             </div>
-            {backend === "claude_code" && (
-              <div>
-                <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-                  Manual fallback
-                </dt>
-                <dd className="mt-1 break-words font-mono text-xs text-zinc-800">
-                  openbase-coder claude login
-                </dd>
-              </div>
-            )}
           </dl>
         </aside>
       </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
         <PrimaryButton disabled={!backendAuthReady} onClick={onContinue}>
-          Continue to voice setup
+          Continue to Openbase sign in
           <ArrowRight aria-hidden className="h-4 w-4" />
         </PrimaryButton>
       </div>

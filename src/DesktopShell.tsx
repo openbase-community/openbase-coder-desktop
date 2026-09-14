@@ -27,6 +27,7 @@ import {
 import {
   audioProviderChoice,
   backendChoiceFromCliBackend,
+  voiceConfigurationReady,
 } from "./onboarding/cliStatus";
 import {
   deriveCloudPairingFacts,
@@ -40,6 +41,7 @@ import {
   deriveOnboardingStep,
   onboardingFlowIndex,
   resolveOnboardingPage,
+  visibleOnboardingFlow,
 } from "./onboarding/deriveStep";
 import {
   calmSpring,
@@ -192,6 +194,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     refreshCloudState,
     refreshTailscaleIdentity,
     registerLoginAttempt,
+    runtime,
     saveVoiceKeys,
     setVoiceKeyInputs,
     status,
@@ -272,19 +275,24 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   const canRunUtilities = Boolean(installer) && !runningCommand;
   const backendReadyForOnboarding = localBackendReadyForOnboarding(status);
   const setupSucceeded = setupCompleted;
-  // The install's audio provider and voice readiness are CLI facts; older
-  // CLIs that do not report them must never block on voice.
   const selectedAudioProvider = audioProviderChoice(audio);
-  const voiceConfigured = audio ? audio.voice_ready : true;
+  // Managed Cloud and local audio do not ask the user for provider keys.
+  // Only Cartesia owns a separate configuration gate in this flow.
+  const voiceConfigured = voiceConfigurationReady(audio);
   const selectedAudioProviderOption =
     audioProviderOptions.find((option) => option.id === selectedAudioProvider) ??
     audioProviderOptions[0];
   const loggedIn = Boolean(loginStatus?.authenticated);
   const installedBackend = backendChoiceFromCliBackend(backendAuth?.backend);
-  // Older CLIs do not report backend_auth (null): never block on missing
-  // data. Openbase Cloud auth rides on the Openbase sign-in step instead.
+  // Only bring-your-own Codex/Claude Code needs a second sign-in. Openbase
+  // Cloud rides on the account login later in the flow, so treating that as
+  // a separate agent-auth gate creates a redundant (and pre-login impossible)
+  // authentication step.
+  const separateBackendAuthRequired =
+    backendAuth?.backend === "codex" || backendAuth?.backend === "claude_code";
+  // Older CLIs do not report backend_auth (null): never block on missing data.
   const backendAuthReady =
-    !backendAuth || backendAuth.backend === "openbase_cloud" || backendAuth.ready;
+    !separateBackendAuthRequired || backendAuth?.ready === true;
   const {
     desktopCloudRegistered,
     desktopOnTailscale,
@@ -294,14 +302,30 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     tailscalePaired,
   } = deriveCloudPairingFacts(cloudState);
   const privateNetworkHealthy = tailscaleServe?.healthy === true;
+  const voiceRuntimeReady = runtime?.voice_ready;
   const pairingReady = privateNetworkPairingReady(
     tailscalePaired,
     tailscaleServe?.healthy,
+    backendReadyForOnboarding,
+    voiceRuntimeReady,
   );
   const effectivePairingDiagnosticMessages = [
     ...pairingDiagnosticMessages,
     ...(tailscalePaired && !privateNetworkHealthy
       ? ["The devices are registered, but the selected private-network routes are not healthy yet."]
+      : []),
+    ...(tailscalePaired && privateNetworkHealthy && !backendReadyForOnboarding
+      ? ["The devices are registered, but the Openbase backend is still starting."]
+      : []),
+    ...(tailscalePaired && privateNetworkHealthy && runtime && !runtime.voice_ready
+      ? [
+          runtime.livekit_server_ready
+            ? "The LiveKit agent is still starting."
+            : "The LiveKit voice server is still starting.",
+        ]
+      : []),
+    ...(tailscalePaired && privateNetworkHealthy && !runtime
+      ? ["Waiting for the CLI to report live voice-service readiness."]
       : []),
   ];
   const onboardingFacts = {
@@ -420,9 +444,8 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   }, [loggedIn, page, refreshCloudState]);
 
   useEffect(() => {
-    // The agent sign-in finishes outside the app (browser OAuth or a
-    // terminal `codex login`), so poll the CLI's onboarding status while
-    // the user is on the step.
+    // Agent sign-in finishes in the provider's browser flow, so poll the
+    // CLI's onboarding status while the user is on the step.
     if (page !== "backendAuth") {
       return undefined;
     }
@@ -504,17 +527,21 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("focus", refreshAfterExternalAuthSignal);
   }, [refreshAfterExternalAuthSignal]);
 
-  const pages: { id: OnboardingPage; label: string }[] = [
-    { id: "welcome", label: "Overview" },
-    { id: "prerequisites", label: "Prerequisites" },
-    { id: "setup", label: "Setup" },
-    { id: "backendAuth", label: "Agent sign-in" },
-    { id: "voiceKeys", label: "Voice" },
-    { id: "login", label: "Sign in" },
-    { id: "mobile", label: "Phone" },
-    { id: "pairing", label: "Pairing" },
-    { id: "verify", label: "Verify" },
-  ];
+  const pageLabels: Record<OnboardingPage, string> = {
+    backendAuth: "Agent sign-in",
+    login: "Sign in",
+    mobile: "Phone",
+    pairing: "Pairing",
+    prerequisites: "Prerequisites",
+    setup: "Setup",
+    verify: "Verify",
+    voiceKeys: "Voice keys",
+    welcome: "Overview",
+  };
+  const pages = visibleOnboardingFlow(
+    installedBackend ?? selectedBackend,
+    selectedAudioProvider,
+  ).map((id) => ({ id, label: pageLabels[id] }));
 
   useEffect(() => {
     const now = Date.now();
@@ -868,6 +895,8 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
                 onRefreshTailscale={() => void refreshTailscaleIdentity()}
                 pairingDiagnosticMessages={effectivePairingDiagnosticMessages}
                 registrationRunning={runningCommand === "onboardingReport"}
+                runtime={runtime}
+                backendReady={backendReadyForOnboarding}
                 tailscaleIdentity={tailscaleIdentity}
                 tailscalePaired={pairingReady}
               />
@@ -894,6 +923,8 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
                 onRefreshTailscale={() => void refreshTailscaleIdentity()}
                 registrationRunning={runningCommand === "onboardingReport"}
                 pairingDiagnosticMessages={effectivePairingDiagnosticMessages}
+                runtime={runtime}
+                backendReady={backendReadyForOnboarding}
                 tailscaleIdentity={tailscaleIdentity}
                 tailscalePaired={pairingReady}
                 tailnetProvider={tailnetProvider}
