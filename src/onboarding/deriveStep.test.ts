@@ -40,6 +40,7 @@ const allDone: OnboardingFacts = {
   installerPresent: true,
   loggedIn: true,
   mobileAuthenticated: true,
+  mobileRecentlyActive: true,
   pairingAcknowledged: true,
   requiredPrerequisitesOk: true,
   setupSucceeded: true,
@@ -57,6 +58,7 @@ const freshMachine: OnboardingFacts = {
   installerPresent: true,
   loggedIn: false,
   mobileAuthenticated: false,
+  mobileRecentlyActive: false,
   pairingAcknowledged: false,
   requiredPrerequisitesOk: false,
   setupSucceeded: false,
@@ -65,10 +67,16 @@ const freshMachine: OnboardingFacts = {
   welcomeAcknowledged: false,
 };
 
-const facts = (overrides: Partial<OnboardingFacts>, base = allDone): OnboardingFacts => ({
-  ...base,
-  ...overrides,
-});
+const facts = (overrides: Partial<OnboardingFacts>, base = allDone): OnboardingFacts => {
+  const merged = { ...base, ...overrides };
+  // A phone can't be "recently active" if it isn't linked at all. Keep fixtures
+  // self-consistent: a case that says mobileAuthenticated:false means "no phone"
+  // unless it explicitly sets recency.
+  if (!merged.mobileAuthenticated && overrides.mobileRecentlyActive === undefined) {
+    merged.mobileRecentlyActive = false;
+  }
+  return merged;
+};
 
 describe("deriveOnboardingStep", () => {
   it("starts a fresh machine at welcome", () => {
