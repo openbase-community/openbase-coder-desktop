@@ -65,6 +65,9 @@ export function PairingPage({
     tailscaleIdentity?.dnsName ||
     tailscaleIdentity?.hostName ||
     tailscaleIdentity?.ip ||
+    (tailnetProvider === "netmesh-tsnet" && !tailscaleConnected
+      ? "Openbase Direct is ready to connect"
+      : null) ||
     tailscaleIdentity?.error ||
     "Checking private network...";
   const installationLabel = !tailscaleKnown

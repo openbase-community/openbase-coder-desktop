@@ -745,7 +745,12 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               onContinue={() => {
                 completeOnboardingStep("welcome");
                 acknowledgeWelcome();
-                clearPageOverride();
+                // Prerequisite facts can already be healthy on a fresh DMG
+                // because the bundled CLI and recommended transport are
+                // available. Still show this page once: it owns the explicit
+                // Openbase VPN vs Openbase Direct choice, which must never be
+                // skipped merely because the default is technically usable.
+                setPageOverride("prerequisites");
               }}
             />
           )}
