@@ -10,10 +10,12 @@ import { PulsingDot } from "../motion";
 export function MobilePage({
   cloudStateError,
   mobileAuthenticated,
+  mobileRecentlyActive,
   onContinue,
 }: {
   cloudStateError: string | null;
   mobileAuthenticated: boolean;
+  mobileRecentlyActive: boolean;
   onContinue: () => void;
 }) {
   return (
@@ -44,9 +46,14 @@ export function MobilePage({
             </div>
           </div>
 
-          {mobileAuthenticated ? (
+          {mobileAuthenticated && mobileRecentlyActive ? (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Your phone is signed in. Continue to pairing.
+              Your phone is signed in and active. Continue to pairing.
+            </div>
+          ) : mobileAuthenticated ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
+              <PulsingDot />
+              Your phone is linked. Open Openbase on your iPhone to continue; this page updates automatically when it checks in.
             </div>
           ) : (
             <div className="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-600">
@@ -54,7 +61,7 @@ export function MobilePage({
               Waiting for your phone to sign in
             </div>
           )}
-          {cloudStateError && !mobileAuthenticated && (
+          {cloudStateError && !mobileRecentlyActive && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               {cloudStateError}
             </div>
@@ -72,6 +79,13 @@ export function MobilePage({
               </dd>
             </div>
             <div>
+              <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Recent check-in</dt>
+              <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
+                <StatusIcon ok={mobileRecentlyActive} />
+                {mobileRecentlyActive ? "Detected" : "Waiting for Openbase on iPhone"}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Checks</dt>
               <dd className="mt-1 text-zinc-800">
                 Updates every few seconds while this page is open.
@@ -82,7 +96,7 @@ export function MobilePage({
       </div>
 
       <div className="mt-6 flex flex-wrap gap-3">
-        <PrimaryButton disabled={!mobileAuthenticated} onClick={onContinue}>
+        <PrimaryButton disabled={!mobileAuthenticated || !mobileRecentlyActive} onClick={onContinue}>
           Continue to pairing
           <ArrowRight aria-hidden className="h-4 w-4" />
         </PrimaryButton>
