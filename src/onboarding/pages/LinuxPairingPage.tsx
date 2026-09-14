@@ -1,16 +1,18 @@
 import { ArrowRight, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
+import { AdvancedDetails } from "../components/AdvancedDetails";
 import { PageShell } from "../components/PageShell";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { StatusIcon } from "../components/StatusIcon";
 import { TerminalOutput } from "../components/TerminalOutput";
 import { PulsingDot } from "../motion";
-import type { InstallerCommand, TailscaleIdentityStatus } from "../types";
+import type { CliRuntimeReadiness, InstallerCommand, TailscaleIdentityStatus } from "../types";
 
 export function LinuxPairingPage({
   cloudStateError,
   commandError,
   commandLines,
+  backendReady,
   desktopCloudRegistered,
   desktopOnTailscale,
   lastExit,
@@ -24,12 +26,14 @@ export function LinuxPairingPage({
   onRefreshTailscale,
   pairingDiagnosticMessages,
   registrationRunning,
+  runtime,
   tailscaleIdentity,
   tailscalePaired,
 }: {
   cloudStateError: string | null;
   commandError: string | null;
   commandLines: string[];
+  backendReady: boolean;
   desktopCloudRegistered: boolean;
   desktopOnTailscale: boolean;
   lastExit: { code: number | null; commandId: InstallerCommand } | null;
@@ -43,6 +47,7 @@ export function LinuxPairingPage({
   onRefreshTailscale: () => void;
   pairingDiagnosticMessages: string[];
   registrationRunning: boolean;
+  runtime: CliRuntimeReadiness | null;
   tailscaleIdentity: TailscaleIdentityStatus | null;
   tailscalePaired: boolean;
 }) {
@@ -69,7 +74,7 @@ export function LinuxPairingPage({
 
   return (
     <PageShell
-      eyebrow="Step 8"
+      eyebrow="Private pairing"
       heading="Connect your workspace over Tailscale"
       support="The desktop app joins this Linux workspace to your tailnet, enables Tailscale SSH, and registers its private address with Openbase. You will authenticate directly with Tailscale in the browser."
     >
@@ -157,8 +162,8 @@ export function LinuxPairingPage({
           )}
           {tailscalePaired ? (
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              This workspace is registered and both devices are paired over Tailscale.
-              Tailscale SSH is enabled for connections allowed by your tailnet policy.
+              Both devices can see each other, and this workspace&apos;s backend and voice services
+              are ready. Tailscale SSH is enabled for connections allowed by your tailnet policy.
             </div>
           ) : pairingDiagnosticMessages.length > 0 ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -180,17 +185,21 @@ export function LinuxPairingPage({
               {cloudStateError}
             </div>
           )}
-          {registrationFailed && (
-            <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-              Automatic workspace registration exited with code {lastExit?.code ?? "unknown"}.
-            </div>
-          )}
           {commandError && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
               {commandError}
             </div>
           )}
-          {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+          {(registrationFailed || commandLines.length > 0) && (
+            <AdvancedDetails>
+              {registrationFailed && (
+                <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+                  Automatic workspace registration exited with code {lastExit?.code ?? "unknown"}.
+                </div>
+              )}
+              {commandLines.length > 0 && <TerminalOutput lines={commandLines} />}
+            </AdvancedDetails>
+          )}
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -213,6 +222,18 @@ export function LinuxPairingPage({
               ["Workspace on Tailscale", desktopOnTailscale, desktopOnTailscale ? "Reported to cloud" : "Waiting"],
               ["Phone on Tailscale", mobileOnTailscale, mobileOnTailscale ? "Reported to cloud" : "Waiting"],
               ["Cloud pairing", tailscalePaired, tailscalePaired ? "Paired" : "Not paired"],
+              ["Openbase backend", backendReady, backendReady ? "Ready" : "Starting"],
+              [
+                "LiveKit voice services",
+                runtime?.voice_ready === true,
+                !runtime
+                  ? "Checking"
+                  : runtime.voice_ready
+                    ? "Ready"
+                    : runtime.livekit_server_ready
+                      ? "Agent starting"
+                      : "Server starting",
+              ],
             ].map(([label, ok, value]) => (
               <div key={String(label)}>
                 <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</dt>

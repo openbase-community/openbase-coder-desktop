@@ -1,4 +1,4 @@
-import type { OnboardingPage } from "./types";
+import type { AudioProviderChoice, BackendChoice, OnboardingPage } from "./types";
 
 /**
  * The onboarding step the app should present. Either one of the pages, or
@@ -18,6 +18,18 @@ export const ONBOARDING_FLOW_ORDER: readonly OnboardingPage[] = [
   "pairing",
   "verify",
 ];
+
+/** Pages that can require action for the selected setup path. */
+export function visibleOnboardingFlow(
+  backend: BackendChoice,
+  audioProvider: AudioProviderChoice,
+): OnboardingPage[] {
+  return ONBOARDING_FLOW_ORDER.filter((page) => {
+    if (page === "backendAuth") return backend !== "openbase-cloud";
+    if (page === "voiceKeys") return audioProvider === "cartesia";
+    return true;
+  });
+}
 
 export function onboardingFlowIndex(page: OnboardingPage): number {
   return ONBOARDING_FLOW_ORDER.indexOf(page);

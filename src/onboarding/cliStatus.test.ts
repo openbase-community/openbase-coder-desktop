@@ -5,6 +5,7 @@ import {
   backendChoiceFromCliBackend,
   identityFromTailscaleSelf,
   parseCliOnboardingStatus,
+  voiceConfigurationReady,
 } from "./cliStatus";
 
 describe("parseCliOnboardingStatus", () => {
@@ -20,6 +21,12 @@ describe("parseCliOnboardingStatus", () => {
       },
       tailscale_self: { available: true, dns_name: "mac.tailnet.ts.net" },
       tailscale_serve: { healthy: false, error: "serve down" },
+      runtime: {
+        backend_ready: true,
+        livekit_agent_ready: false,
+        livekit_server_ready: true,
+        voice_ready: false,
+      },
       versions: { cli: "0.1.13" },
     });
 
@@ -38,6 +45,12 @@ describe("parseCliOnboardingStatus", () => {
     });
     expect(parsed.tailscaleSelf?.dns_name).toBe("mac.tailnet.ts.net");
     expect(parsed.tailscaleServe?.healthy).toBe(false);
+    expect(parsed.runtime).toEqual({
+      backend_ready: true,
+      livekit_agent_ready: false,
+      livekit_server_ready: true,
+      voice_ready: false,
+    });
     expect(parsed.versions?.cli).toBe("0.1.13");
   });
 
@@ -47,6 +60,7 @@ describe("parseCliOnboardingStatus", () => {
     expect(parsed.audio).toBeNull();
     expect(parsed.backendAuth).toBeNull();
     expect(parsed.loginStatus).toBeNull();
+    expect(parsed.runtime).toBeNull();
     expect(parsed.tailscaleSelf).toBeNull();
     expect(parsed.tailscaleServe).toBeNull();
   });
@@ -109,5 +123,23 @@ describe("audioProviderChoice", () => {
     expect(
       audioProviderChoice({ keys: {}, provider: "local", voice_ready: true }),
     ).toBe("local");
+  });
+});
+
+describe("voiceConfigurationReady", () => {
+  it("only creates a separate gate for unconfigured Cartesia", () => {
+    expect(voiceConfigurationReady(null)).toBe(true);
+    expect(
+      voiceConfigurationReady({ keys: {}, provider: "openbase-cloud", voice_ready: false }),
+    ).toBe(true);
+    expect(
+      voiceConfigurationReady({ keys: {}, provider: "local", voice_ready: false }),
+    ).toBe(true);
+    expect(
+      voiceConfigurationReady({ keys: {}, provider: "cartesia", voice_ready: false }),
+    ).toBe(false);
+    expect(
+      voiceConfigurationReady({ keys: {}, provider: "cartesia", voice_ready: true }),
+    ).toBe(true);
   });
 });

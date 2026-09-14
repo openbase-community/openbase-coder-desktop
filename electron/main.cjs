@@ -1119,6 +1119,18 @@ trustedHandle("openbase:installer:open-tailscale-app", async () => {
   }
 });
 
+trustedHandle("openbase:installer:open-login-items-settings", async () => {
+  try {
+    await shell.openExternal(
+      "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
+    );
+    return { ok: true };
+  } catch (error) {
+    mainLogger.error("open-login-items-settings-error", { message: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
 registerAppearance({ ipcMain, nativeTheme, BrowserWindow });
 
 trustedHandle("openbase:shell:open-external", async (_event, targetUrl) => {
