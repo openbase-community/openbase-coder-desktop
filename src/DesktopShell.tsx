@@ -298,6 +298,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     desktopOnTailscale,
     diagnosticMessages: pairingDiagnosticMessages,
     mobileAuthenticated,
+    mobileRecentlyActive,
     mobileOnTailscale,
     tailscalePaired,
   } = deriveCloudPairingFacts(cloudState);
@@ -334,6 +335,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     installerPresent: Boolean(installer),
     loggedIn,
     mobileAuthenticated,
+    mobileRecentlyActive,
     pairingAcknowledged,
     requiredPrerequisitesOk,
     setupSucceeded,
