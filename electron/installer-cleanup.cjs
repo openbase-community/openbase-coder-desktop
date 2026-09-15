@@ -1,14 +1,14 @@
 // First-launch install hygiene. /Applications is the only supported install
 // location. When the packaged app runs from anywhere else, offer to move it
 // there (LetsMove-style, via app.moveToApplicationsFolder). When it runs from
-// /Applications for the first time and the install DMG is still mounted or
-// sitting in Downloads/Desktop, offer to eject it and move it to the Trash —
-// enumerating exactly what will be touched. Each flow's answer is remembered
-// in userData so its prompt shows at most once per installation.
+// /Applications for the first time and the install DMG is still mounted,
+// offer to eject it and move that exact source image to the Trash. Discovery
+// uses hdiutil rather than probing protected user folders before consent.
+// Each flow's answer is remembered in userData so its prompt shows at most
+// once per installation.
 const { app, dialog, shell } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fsp = require("node:fs/promises");
-const os = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
 
@@ -107,25 +107,6 @@ async function findMountedInstallerImages() {
   return matches;
 }
 
-async function findDownloadedInstallerDmgs() {
-  const home = os.homedir();
-  const results = [];
-  for (const dir of [path.join(home, "Downloads"), path.join(home, "Desktop")]) {
-    let entries = [];
-    try {
-      entries = await fsp.readdir(dir);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (INSTALLER_DMG_PATTERN.test(entry)) {
-        results.push(path.join(dir, entry));
-      }
-    }
-  }
-  return results;
-}
-
 function collectTrashTargets(dmgPaths, mountedImages) {
   const trashTargets = new Set(dmgPaths);
   for (const image of mountedImages) {
@@ -198,6 +179,16 @@ function cleanupSummary({ ejected, failures, trashed }) {
   return lines.join("\n");
 }
 
+function cleanupResultMessage({ ejected, failures, trashed }) {
+  if (failures.length === 0) {
+    return "Installer cleaned up";
+  }
+  if (ejected > 0 || trashed > 0) {
+    return "Installer partially cleaned up";
+  }
+  return "Installer cleanup incomplete";
+}
+
 // /Applications is the only supported install location; offer to move the
 // app there and relaunch. moveToApplicationsFolder quits this instance on
 // success, so nothing meaningful runs after it.
@@ -261,11 +252,13 @@ async function maybeOfferInstallerCleanup({ appPackage, logger, parentWindow }) 
       return;
     }
 
-    const [mountedImages, dmgPaths] = await Promise.all([
-      findMountedInstallerImages(),
-      findDownloadedInstallerDmgs(),
-    ]);
-    const trashTargets = collectTrashTargets(dmgPaths, mountedImages);
+    // hdiutil already identifies the mounted image and its source path. Do
+    // not enumerate Desktop or Downloads merely to decide whether to offer
+    // cleanup: that would trigger protected-folder consent before the user
+    // has chosen Clean Up. Access to the exact mounted image happens only
+    // after that explicit choice in performCleanup.
+    const mountedImages = await findMountedInstallerImages();
+    const trashTargets = collectTrashTargets([], mountedImages);
     if (mountedImages.length === 0 && trashTargets.length === 0) {
       // Not a DMG install (or the installer is already gone). Remember that
       // the first launch was inspected so we never rescan or prompt again.
@@ -304,7 +297,7 @@ async function maybeOfferInstallerCleanup({ appPackage, logger, parentWindow }) 
       await dialog.showMessageBox(dialogParent(parentWindow), {
         buttons: ["OK"],
         detail: cleanupSummary(result),
-        message: "Installer cleaned up",
+        message: cleanupResultMessage(result),
         type: result.failures.length > 0 ? "warning" : "info",
       });
     }
@@ -313,4 +306,4 @@ async function maybeOfferInstallerCleanup({ appPackage, logger, parentWindow }) 
   }
 }
 
-module.exports = { maybeOfferInstallerCleanup };
+module.exports = { cleanupResultMessage, maybeOfferInstallerCleanup };
