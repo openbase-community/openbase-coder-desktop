@@ -149,12 +149,20 @@ if (!existsSync(builtAppPath)) {
 rmSync(stagedAppPath, { force: true, recursive: true });
 mkdirSync(stagedRoot, { recursive: true });
 cpSync(builtAppPath, stagedAppPath, { recursive: true });
+// Xcode can attach provenance metadata to nested unsigned executables. Remove
+// build-only extended attributes before signing so codesign can replace their
+// linker signatures on developer machines as reliably as it does in CI.
+execFileSync("xattr", ["-cr", stagedAppPath], { stdio: "inherit" });
 for (const executableName of ["tailscale", "tailscaled"]) {
   signExecutable(
     path.join(stagedAppPath, "Contents", "Resources", executableName),
     `bundled ${executableName}`,
   );
 }
+signExecutable(
+  path.join(stagedAppPath, "Contents", "MacOS", "netmesh-ctl"),
+  "bundled netmesh-ctl",
+);
 signAppBundle(stagedAppPath, "macOS Netmesh companion app");
 verifyStagedCompanion();
 console.log(`[stage-netmesh-companion] staged ${stagedAppPath}`);
