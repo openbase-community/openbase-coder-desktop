@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { AppUpdateNotice } from "./AppUpdateNotice";
-import { productAnalytics } from "./analytics";
+import { identifyAnalyticsUser, productAnalytics, setAnalyticsUserId } from "./analytics";
 import { ProductAnalyticsPreference } from "./ProductAnalyticsPreference";
 import openbaseWordmarkUrl from "../assets/openbase-logo-and-text.svg";
 import { DesktopControlNotice } from "./DesktopControlNotice";
@@ -145,6 +145,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   const [launchGateOpen, setLaunchGateOpen] = useState(false);
   const autoMacRegistrationAttemptRef = useRef<string | null>(null);
   const appSessionTrackedRef = useRef(false);
+  const analyticsIdentifiedRef = useRef(false);
   const onboardingStartedAtRef = useRef<number | null>(null);
   const onboardingStepStartedAtRef = useRef(Date.now());
   const lastOnboardingPageRef = useRef<OnboardingPage | null>(null);
@@ -174,6 +175,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     acknowledgeLinuxOnboardingComplete,
     acknowledgePairing,
     acknowledgeWelcome,
+    authenticatedBackendFetch,
     audio,
     backendAuth,
     checkError,
@@ -210,6 +212,23 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     voiceKeysSaving,
     welcomeAcknowledged,
   } = useOnboardingState(installer, backendBaseUrl);
+
+  // Once the Openbase session is authenticated, bind this client's Amplitude
+  // device id to the account and adopt the account's stable analytics key as
+  // the analytics user_id (best-effort, non-blocking, respects opt-out). On
+  // sign-out / login expiry, drop the identity and allow a fresh re-identify.
+  const authenticated = loginStatus?.authenticated === true;
+  useEffect(() => {
+    if (!authenticated) {
+      analyticsIdentifiedRef.current = false;
+      setAnalyticsUserId(null);
+      return;
+    }
+    if (analyticsIdentifiedRef.current) return;
+    analyticsIdentifiedRef.current = true;
+    void identifyAnalyticsUser(authenticatedBackendFetch);
+  }, [authenticated, authenticatedBackendFetch]);
+
   const isLinux = usesManagedLinuxTailscale(installer?.platform);
   const {
     connect: connectLinuxTailscale,
