@@ -64,6 +64,7 @@ test("logs reconciliation failure without aborting desktop launch", async () => 
     readTailnetConfig: async () => ({ ok: true, provider: "netmesh" }),
     register: async () => ({ ok: false, error: "replacement unavailable" }),
     logger,
+    maxAttempts: 1,
   });
 
   assert.equal(result, null);
@@ -72,6 +73,46 @@ test("logs reconciliation failure without aborting desktop launch", async () => 
       level: "error",
       event: "netmesh-helper-launch-reconciliation-error",
       payload: { message: "replacement unavailable" },
+    },
+  ]);
+});
+
+test("retries a transient helper failure during app relaunch", async () => {
+  const logger = recordingLogger();
+  const waits = [];
+  let registrations = 0;
+
+  const result = await reconcileNetmeshHelperOnLaunch({
+    enabled: true,
+    readTailnetConfig: async () => ({ ok: true, provider: "netmesh" }),
+    register: async () => {
+      registrations += 1;
+      if (registrations === 1) {
+        return { ok: false, error: "helper is still restarting" };
+      }
+      return { ok: true, helper: "enabled", helperReplaced: false };
+    },
+    logger,
+    wait: async (ms) => waits.push(ms),
+  });
+
+  assert.equal(registrations, 2);
+  assert.deepEqual(waits, [1000]);
+  assert.equal(result.helper, "enabled");
+  assert.deepEqual(logger.events, [
+    {
+      level: "info",
+      event: "netmesh-helper-launch-reconciliation-retrying",
+      payload: {
+        attempt: 1,
+        maxAttempts: 3,
+        message: "helper is still restarting",
+      },
+    },
+    {
+      level: "info",
+      event: "netmesh-helper-launch-reconciled",
+      payload: { helper: "enabled", helperReplaced: false },
     },
   ]);
 });
