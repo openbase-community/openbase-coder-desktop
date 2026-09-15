@@ -2,6 +2,7 @@ async function reconcileNetmeshHelperOnLaunch({
   enabled,
   readTailnetConfig,
   register,
+  repairAfterAppUpdate,
   logger,
   maxAttempts = 3,
   retryDelayMs = 1000,
@@ -32,6 +33,25 @@ async function reconcileNetmeshHelperOnLaunch({
         });
         await wait(retryDelayMs * attempt);
         continue;
+      }
+
+      if (repairAfterAppUpdate) {
+        try {
+          const repaired = await repairAfterAppUpdate();
+          if (repaired?.ok === false) {
+            throw new Error(repaired.error || "Netmesh helper repair failed.");
+          }
+          logger.info("netmesh-helper-launch-repaired", {
+            helper: repaired?.helper ?? "unknown",
+            helperReplaced: repaired?.helperReplaced === true,
+          });
+          return repaired;
+        } catch (repairError) {
+          logger.error("netmesh-helper-launch-reconciliation-error", {
+            message: repairError.message,
+          });
+          return null;
+        }
       }
 
       // The desktop UI and local backend remain usable when the VPN helper is

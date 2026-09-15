@@ -116,3 +116,45 @@ test("retries a transient helper failure during app relaunch", async () => {
     },
   ]);
 });
+
+test("repairs a helper made unreachable by an atomic app update", async () => {
+  const logger = recordingLogger();
+  let registrations = 0;
+  let repairs = 0;
+
+  const result = await reconcileNetmeshHelperOnLaunch({
+    enabled: true,
+    readTailnetConfig: async () => ({ ok: true, provider: "netmesh" }),
+    register: async () => {
+      registrations += 1;
+      return { ok: false, error: "running helper version is unavailable" };
+    },
+    repairAfterAppUpdate: async () => {
+      repairs += 1;
+      return { ok: true, helper: "enabled", helperReplaced: true };
+    },
+    logger,
+    maxAttempts: 2,
+    wait: async () => {},
+  });
+
+  assert.equal(registrations, 2);
+  assert.equal(repairs, 1);
+  assert.equal(result.helperReplaced, true);
+  assert.deepEqual(logger.events, [
+    {
+      level: "info",
+      event: "netmesh-helper-launch-reconciliation-retrying",
+      payload: {
+        attempt: 1,
+        maxAttempts: 2,
+        message: "running helper version is unavailable",
+      },
+    },
+    {
+      level: "info",
+      event: "netmesh-helper-launch-repaired",
+      payload: { helper: "enabled", helperReplaced: true },
+    },
+  ]);
+});
