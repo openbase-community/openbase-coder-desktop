@@ -20,9 +20,9 @@ export function MobilePage({
 }) {
   return (
     <PageShell
-      eyebrow="iPhone"
-      heading="Get Openbase on your iPhone"
-      support="Scan the QR code to download the Openbase iOS app, then sign in with the same account. This page updates automatically once your phone is linked."
+      eyebrow="Phone"
+      heading="Get Openbase on your phone"
+      support="Scan the QR code to download the Openbase mobile app for iPhone or Android, then sign in with the same account. This page updates automatically once your phone is linked."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -33,7 +33,7 @@ export function MobilePage({
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium text-zinc-950">
                 <Smartphone aria-hidden className="h-4 w-4 text-zinc-500" />
-                Scan to download Openbase on your iPhone
+                Scan to download Openbase on your phone
               </div>
               <div className="mt-2 text-sm leading-6 text-zinc-600">
                 Open the Camera app and point it at the code, or visit the link
@@ -53,7 +53,7 @@ export function MobilePage({
           ) : mobileAuthenticated ? (
             <div className="flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
               <PulsingDot />
-              Your phone is linked. Open Openbase on your iPhone to continue; this page updates automatically when it checks in.
+              Your phone is linked. Open Openbase on your phone to continue; this page updates automatically when it checks in.
             </div>
           ) : (
             <div className="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-600">
@@ -82,7 +82,7 @@ export function MobilePage({
               <dt className="text-xs uppercase tracking-[0.14em] text-zinc-500">Recent check-in</dt>
               <dd className="mt-1 inline-flex items-center gap-1.5 text-zinc-800">
                 <StatusIcon ok={mobileRecentlyActive} />
-                {mobileRecentlyActive ? "Detected" : "Waiting for Openbase on iPhone"}
+                {mobileRecentlyActive ? "Detected" : "Waiting for Openbase on your phone"}
               </dd>
             </div>
             <div>
