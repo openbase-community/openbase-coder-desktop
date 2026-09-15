@@ -22,7 +22,7 @@ describe("deriveCloudPairingFacts", () => {
       desktopCloudRegistered: true,
       desktopOnTailscale: true,
       diagnosticMessages: [
-        "The iPhone is registered, but it has not reported a private-network address.",
+        "The phone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
       mobileRecentlyActive: false,
@@ -69,7 +69,7 @@ describe("deriveCloudPairingFacts", () => {
       desktopCloudRegistered: true,
       desktopOnTailscale: true,
       diagnosticMessages: [
-        "The iPhone is registered, but it has not reported a private-network address.",
+        "The phone is registered, but it has not reported a private-network address.",
       ],
       mobileAuthenticated: true,
       mobileRecentlyActive: false,
@@ -89,7 +89,7 @@ describe("deriveCloudPairingFacts", () => {
     };
 
     expect(deriveCloudPairingFacts(state).diagnosticMessages).toEqual([
-      "This Mac and iPhone appear to be on different private networks.",
+      "This Mac and phone appear to be on different private networks.",
     ]);
   });
 

@@ -152,10 +152,10 @@ export function PairingPage({
             )}
             <div className="px-4 py-4">
               <div className="text-sm font-medium text-zinc-950">
-                2. Open Openbase on your iPhone
+                2. Open Openbase on your phone
               </div>
               <div className="mt-1 text-xs leading-5 text-zinc-600">
-                The Openbase iOS app walks you through this and registers your
+                The Openbase mobile app walks you through this and registers your
                 phone automatically. Come back here when it is connected.
               </div>
             </div>

@@ -22,7 +22,7 @@ export type CloudPairingFacts = {
 
 /**
  * How fresh a mobile device's `last_seen` must be to count as "a phone is here
- * now" for onboarding. The iOS app re-registers on every foreground/poll while
+ * now" for onboarding. The mobile app re-registers on every foreground/poll while
  * onboarding, so an actively-used phone stays well inside this window; a row
  * left by a prior install or a wiped phone ages out and re-surfaces the QR.
  */
@@ -65,11 +65,11 @@ function factMessage(fact: CloudOnboardingMissingFact) {
     case "desktop_tailscale_missing":
       return "This Mac is registered, but it has not reported a private-network address.";
     case "mobile_not_registered":
-      return "No signed-in iPhone has registered with Openbase Cloud yet.";
+      return "No signed-in phone has registered with Openbase Cloud yet.";
     case "mobile_tailscale_missing":
-      return "The iPhone is registered, but it has not reported a private-network address.";
+      return "The phone is registered, but it has not reported a private-network address.";
     case "tailnet_mismatch":
-      return "This Mac and iPhone appear to be on different private networks.";
+      return "This Mac and phone appear to be on different private networks.";
     default:
       return fact.message ?? null;
   }
@@ -116,10 +116,10 @@ export function deriveCloudPairingFacts(
       );
     }
     if (!mobileAuthenticated) {
-      diagnosticMessages.push("No signed-in iPhone has registered with Openbase Cloud yet.");
+      diagnosticMessages.push("No signed-in phone has registered with Openbase Cloud yet.");
     } else if (!mobileOnTailscale) {
       diagnosticMessages.push(
-        "The iPhone is registered, but it has not reported a private-network address.",
+        "The phone is registered, but it has not reported a private-network address.",
       );
     }
   }

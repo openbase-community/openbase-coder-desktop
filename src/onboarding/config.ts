@@ -34,8 +34,9 @@ export const REQUIRED_PREREQUISITE_IDS = [
   "private-network",
 ];
 export const MAX_TERMINAL_LINES = 1000;
-// App Store listing is TestFlight-only for now; openbase.cloud redirects there.
-export const MOBILE_APP_DOWNLOAD_URL = "https://openbase.cloud/ios";
+// The downloads page routes people to the current iOS or Android distribution
+// without making desktop onboarding guess which phone they use.
+export const MOBILE_APP_DOWNLOAD_URL = "https://openbase.cloud/downloads";
 // Default macOS Tailscale install path: the Mac App Store variant. Its
 // sandboxed network extension avoids the standalone variant's
 // system-extension breakage after Tailscale/macOS updates (login loops,
