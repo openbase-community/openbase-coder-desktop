@@ -245,6 +245,15 @@ function createNetmeshCompanionManager({ electronDir }) {
       undefined,
       recycleCompanionBeforeRegistration,
     ),
+    // Atomic app replacement can leave launchd running the old helper from a
+    // bundle path that now contains the new executable. The signed helper then
+    // needs a helper-only replacement before mutual XPC verification works.
+    repairAfterAppUpdate: () => completeHelperReplacement(
+      () => call("POST", "/repair-helper"),
+      () => call("POST", "/register"),
+      undefined,
+      recycleCompanionBeforeRegistration,
+    ),
     openApprovalSettings: () => call("POST", "/open-approval-settings"),
     connect: ({ controlURL, authKey, hostname }) =>
       call("POST", "/connect", { controlURL, authKey, hostname }),

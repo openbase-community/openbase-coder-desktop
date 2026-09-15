@@ -150,6 +150,9 @@ if (!existsSync(builtAppPath)) {
 rmSync(stagedAppPath, { force: true, recursive: true });
 mkdirSync(stagedRoot, { recursive: true });
 cpSync(builtAppPath, stagedAppPath, { recursive: true });
+// Match the companion staging path: local Xcode builds can carry provenance
+// metadata that prevents Developer ID re-signing of nested executables.
+execFileSync("xattr", ["-cr", stagedAppPath], { stdio: "inherit" });
 for (const resourceExecutable of ["tailscale", "tailscaled"]) {
   signExecutable(
     path.join(stagedAppPath, "Contents", "Resources", resourceExecutable),

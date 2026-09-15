@@ -119,10 +119,10 @@ export function LinuxPairingPage({
 
             <div className="px-4 py-4">
               <div className="text-sm font-medium text-zinc-950">
-                2. Connect your iPhone to the same tailnet
+                2. Connect your phone to the same tailnet
               </div>
               <div className="mt-1 text-xs leading-5 text-zinc-600">
-                The Openbase iOS app registers your phone automatically. This
+                The Openbase mobile app registers your phone automatically. This
                 workspace and the phone remain isolated from other users' tailnets.
               </div>
             </div>

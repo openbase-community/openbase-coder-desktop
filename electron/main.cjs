@@ -1725,6 +1725,7 @@ if (gotSingleInstanceLock) {
     enabled: nonDeveloperInstall && process.platform === "darwin",
     readTailnetConfig: readTailnetConfigViaCli,
     register: () => netmeshCompanion.register(),
+    repairAfterAppUpdate: () => netmeshCompanion.repairAfterAppUpdate(),
     logger: mainLogger,
   });
   setupAppAutoUpdater();
