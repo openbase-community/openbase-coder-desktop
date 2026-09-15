@@ -384,6 +384,7 @@ export function useOnboardingState(
     acknowledgeLinuxOnboardingComplete,
     acknowledgePairing,
     acknowledgeWelcome,
+    authenticatedBackendFetch,
     audio,
     backendAuth: cliStatus?.backendAuth ?? null,
     checkError,
