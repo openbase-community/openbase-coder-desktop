@@ -1434,13 +1434,12 @@ function createWindow() {
     icon: appIconPath,
     backgroundColor: "#edf4ff",
     show: false,
-    // The developer dashboard renders the console UI, which has no title-bar
-    // inset of its own — a hidden title bar puts the traffic lights on top of
-    // the console header, so give it a normal title bar instead.
+    // The console UI has no traffic-light inset of its own, so every window
+    // gets the standard macOS title bar — a hidden title bar would float the
+    // traffic lights over the sidebar wordmark. Vibrancy stays for the
+    // packaged app because onboarding renders on a transparent background.
     ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
-          titleBarStyle: "hiddenInset",
-          trafficLightPosition: { x: 18, y: 18 },
           vibrancy: "under-window",
           visualEffectState: "active",
         }
