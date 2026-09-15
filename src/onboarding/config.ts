@@ -84,6 +84,21 @@ export function filterTailnetOptionsForInstall(
   );
 }
 
+export function resolveTailnetProvider(
+  options: TailnetExperience[],
+  reportedProvider: TailnetExperience["provider"],
+  currentProvider: TailnetExperience["provider"],
+  preserveCurrent: boolean,
+): TailnetExperience["provider"] {
+  if (preserveCurrent && options.some((option) => option.provider === currentProvider)) {
+    return currentProvider;
+  }
+  if (options.some((option) => option.provider === reportedProvider)) {
+    return reportedProvider;
+  }
+  return options.find((option) => option.recommended)?.provider ?? options[0].provider;
+}
+
 export const SETUP_STEP_LABELS: Record<string, string> = {
   workspace: "Prepare runtime assets",
   installation_config: "Write installation config",

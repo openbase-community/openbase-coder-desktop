@@ -9,6 +9,7 @@ import {
   filterTailnetOptionsForInstall,
   NORMAL_ONBOARDING_AUDIO_PROVIDER,
   NORMAL_ONBOARDING_BACKEND,
+  resolveTailnetProvider,
   setupCommandText,
 } from "./config";
 
@@ -35,6 +36,20 @@ describe("onboarding setup defaults", () => {
       "netmesh-tsnet",
     ]);
     expect(filterTailnetOptionsForInstall(options, false)).toEqual(options);
+  });
+
+  it("preserves an explicit Direct choice when prerequisites refresh", () => {
+    const options = [
+      { provider: "netmesh", recommended: true },
+      { provider: "netmesh-tsnet", recommended: false },
+    ] as Parameters<typeof resolveTailnetProvider>[0];
+
+    expect(resolveTailnetProvider(options, "netmesh", "netmesh-tsnet", true)).toBe(
+      "netmesh-tsnet",
+    );
+    expect(resolveTailnetProvider(options, "netmesh", "netmesh-tsnet", false)).toBe(
+      "netmesh",
+    );
   });
 
   it("keeps developer override command generation available", () => {

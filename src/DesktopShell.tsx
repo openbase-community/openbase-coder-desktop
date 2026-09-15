@@ -23,6 +23,7 @@ import {
   getBackendBaseUrl,
   LAUNCH_SETTLE_TIMEOUT_MS,
   REQUIRED_PREREQUISITE_IDS,
+  resolveTailnetProvider,
 } from "./onboarding/config";
 import {
   audioProviderChoice,
@@ -91,6 +92,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
   const [tailnetProvider, setTailnetProvider] = useState<TailnetProvider>(
     nonDeveloperInstall ? "netmesh" : "tailscale",
   );
+  const tailnetProviderChosenRef = useRef(false);
   const [tailnetOptions, setTailnetOptions] = useState<TailnetExperience[]>([]);
   const [tailnetCatalogError, setTailnetCatalogError] = useState<string | null>(null);
   const refreshTailnetProvider = useCallback(async () => {
@@ -119,11 +121,13 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       }
       setTailnetCatalogError(null);
       setTailnetOptions(supportedOptions);
-      setTailnetProvider(
-        supportedOptions.some((option) => option.provider === result.provider)
-          ? (result.provider as TailnetProvider)
-          : (supportedOptions.find((option) => option.recommended)?.provider ??
-              supportedOptions[0].provider),
+      setTailnetProvider((current) =>
+        resolveTailnetProvider(
+          supportedOptions,
+          result.provider as TailnetProvider,
+          current,
+          tailnetProviderChosenRef.current,
+        ),
       );
     } catch (error) {
       setTailnetCatalogError(
@@ -259,6 +263,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       // Selection is setup input, not a provider switch. Setup owns first
       // installation; invoking tailnet set-provider before it exists would
       // try to restart and register services that have not been installed.
+      tailnetProviderChosenRef.current = true;
       setTailnetProvider(provider);
     },
     [],
@@ -745,7 +750,12 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
               onContinue={() => {
                 completeOnboardingStep("welcome");
                 acknowledgeWelcome();
-                clearPageOverride();
+                // Prerequisite facts can already be healthy on a fresh DMG
+                // because the bundled CLI and recommended transport are
+                // available. Still show this page once: it owns the explicit
+                // Openbase VPN vs Openbase Direct choice, which must never be
+                // skipped merely because the default is technically usable.
+                setPageOverride("prerequisites");
               }}
             />
           )}
@@ -867,6 +877,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
             <MobilePage
               cloudStateError={cloudStateError}
               mobileAuthenticated={mobileAuthenticated}
+              mobileRecentlyActive={mobileRecentlyActive}
               onContinue={() => {
                 completeOnboardingStep("mobile");
                 clearPageOverride();
