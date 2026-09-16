@@ -121,7 +121,10 @@ export function productAnalyticsCollectionEnabled(
   storedPreference: string | null,
   doNotTrack: boolean,
 ): boolean {
-  return buildEnabled && storedPreference === "1" && !doNotTrack;
+  // On by default (opt-out): an unset preference counts as enabled; only an
+  // explicit "0" from the Settings toggle disables it. A browser Do Not Track
+  // signal still suppresses collection.
+  return buildEnabled && storedPreference !== "0" && !doNotTrack;
 }
 
 export function browserDoNotTrackEnabled(): boolean {
