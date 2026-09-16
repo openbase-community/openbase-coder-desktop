@@ -21,8 +21,8 @@ export function ProductAnalyticsPreference() {
       />
       <span>
         <span className="block font-medium text-zinc-800">Share anonymous product usage</span>
-        Off until you opt in. Never includes prompts, code, audio, file paths,
-        or repository content.
+        On by default; turn it off anytime. Never includes prompts, code, audio,
+        file paths, or repository content.
       </span>
     </label>
   );
