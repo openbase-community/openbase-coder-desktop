@@ -420,6 +420,23 @@ jobs:
       - name: Disable Spotlight indexing
         run: sudo mdutil -a -i off || true
 
+      # The DMG build downloads the Netmesh prebuilts from the prod `mac/`
+      # prefix and asserts CFBundleVersion >= MINIMUM_NETMESH_BUILD. Only
+      # source-checkout builds publish those artifacts (to `mac-staging/`), so
+      # every contract bump used to fail the first prod DMG until the artifact
+      # was hand-copied. netmesh-macos is pinned @main, so promote the
+      # mac-staging build to prod automatically when prod is stale. No-op when
+      # prod already satisfies the contract; prod builds only.
+      - name: Ensure prod Netmesh prebuilts satisfy the contract
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        working-directory: desktop
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: node scripts/ensure-prod-netmesh-companion.mjs
+
       - name: Build, sign, and notarize macOS DMG
         working-directory: desktop
         run: |

@@ -46,6 +46,33 @@ const ALLOWED_PROPERTY_KEYS = new Set([
   "surface",
 ]);
 
+// The account's stable, cross-regime analytics key (from the Openbase Cloud
+// API), sent as Amplitude's `user_id` so desktop events join the same account
+// identity the backend uses. Null until the signed-in user is identified and
+// cleared on sign-out / opt-out.
+let analyticsUserId: string | null = null;
+
+const ANALYTICS_IDENTIFY_PATH = "/api/openbase/analytics/identify";
+
+/**
+ * The Openbase-session-authenticated fetch the app already uses to reach
+ * ``/api/openbase/...`` (carries the Bearer token). Passed in so this module
+ * stays decoupled from where that mechanism lives.
+ */
+export type AuthenticatedFetch = (
+  path: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/**
+ * Adopt (or clear) the account's stable analytics key as the Amplitude
+ * user_id. Trimmed; blank/empty values clear it.
+ */
+export function setAnalyticsUserId(userId: string | null): void {
+  const trimmed = userId?.trim();
+  analyticsUserId = trimmed ? trimmed : null;
+}
+
 function randomId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -128,7 +155,37 @@ export function setProductAnalyticsEnabled(enabled: boolean): void {
   if (enabled) {
     productAnalytics.trackSessionStartedOnce("analytics_opt_in");
   } else {
+    // Opting out removes the device id above; drop the bound account identity
+    // too so a later opt-in re-identifies from a fresh device id.
+    setAnalyticsUserId(null);
     productAnalytics.resetSessionTracking();
+  }
+}
+
+/**
+ * Bind this client's Amplitude device id to the authenticated Openbase account
+ * and adopt the account's stable analytics key as the Amplitude user_id, so
+ * desktop events share the cross-regime identity the cloud API uses. Honors
+ * the product-analytics opt-in state and is always best-effort: it never
+ * throws or blocks the caller and stays silent on failure.
+ */
+export async function identifyAnalyticsUser(
+  authenticatedFetch: AuthenticatedFetch,
+): Promise<void> {
+  if (!isProductAnalyticsEnabled()) return;
+  try {
+    const response = await authenticatedFetch(ANALYTICS_IDENTIFY_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amplitude_device_id: storedDeviceId() }),
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { analytics_key?: unknown };
+    if (typeof payload.analytics_key === "string" && payload.analytics_key) {
+      setAnalyticsUserId(payload.analytics_key);
+    }
+  } catch {
+    // Analytics identity is always best-effort and must never affect the app.
   }
 }
 
@@ -158,6 +215,7 @@ class ProductAnalytics {
       events: [
         {
           device_id: storedDeviceId(),
+          ...(analyticsUserId ? { user_id: analyticsUserId } : {}),
           event_type: eventType,
           event_properties: eventProperties,
           insert_id: randomId(),
