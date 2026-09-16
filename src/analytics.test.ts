@@ -65,12 +65,12 @@ describe("sanitizeAnalyticsProperties", () => {
     expect(isAllowedAnalyticsEvent("private_prompt_copied")).toBe(false);
   });
 
-  it("requires opt-in and honors privacy and build kill switches", () => {
-    expect(productAnalyticsCollectionEnabled(true, null, false)).toBe(false);
+  it("is on by default and honors opt-out, privacy, and build kill switches", () => {
+    expect(productAnalyticsCollectionEnabled(true, null, false)).toBe(true); // unset = on
     expect(productAnalyticsCollectionEnabled(true, "1", false)).toBe(true);
-    expect(productAnalyticsCollectionEnabled(true, "0", false)).toBe(false);
-    expect(productAnalyticsCollectionEnabled(false, "1", false)).toBe(false);
-    expect(productAnalyticsCollectionEnabled(true, "1", true)).toBe(false);
+    expect(productAnalyticsCollectionEnabled(true, "0", false)).toBe(false); // explicit opt-out
+    expect(productAnalyticsCollectionEnabled(false, null, false)).toBe(false); // build kill switch
+    expect(productAnalyticsCollectionEnabled(true, null, true)).toBe(false); // do-not-track
   });
 
   it("does not create an analytics identifier before an allowed send", () => {
