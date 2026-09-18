@@ -15,6 +15,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
+import { captureNativeBuild, finishNativeBuild } from "./native-provenance.mjs";
 import {
   assertSupportedNetmeshBuild,
   resolveNetmeshPrebuiltPrefix,
@@ -121,6 +122,7 @@ if (!engineReady) {
   });
 }
 
+const nativeBuild = captureNativeBuild(path.dirname(repoRoot), netmeshDir);
 execFileSync("xcodegen", ["generate"], { cwd: netmeshDir, stdio: "inherit" });
 execFileSync(
   "xcodebuild",
@@ -149,6 +151,7 @@ if (!existsSync(builtAppPath)) {
 rmSync(stagedAppPath, { force: true, recursive: true });
 mkdirSync(stagedRoot, { recursive: true });
 cpSync(builtAppPath, stagedAppPath, { recursive: true });
+finishNativeBuild(stagedAppPath, path.dirname(repoRoot), netmeshDir, nativeBuild);
 // Xcode can attach provenance metadata to nested unsigned executables. Remove
 // build-only extended attributes before signing so codesign can replace their
 // linker signatures on developer machines as reliably as it does in CI.

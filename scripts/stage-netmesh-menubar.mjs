@@ -16,6 +16,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
+import { captureNativeBuild, finishNativeBuild } from "./native-provenance.mjs";
 import {
   assertSupportedNetmeshBuild,
   resolveNetmeshPrebuiltPrefix,
@@ -122,6 +123,7 @@ if (!engineReady) {
   });
 }
 
+const nativeBuild = captureNativeBuild(path.dirname(repoRoot), netmeshDir);
 execFileSync("xcodegen", ["generate"], { cwd: netmeshDir, stdio: "inherit" });
 execFileSync(
   "xcodebuild",
@@ -150,6 +152,7 @@ if (!existsSync(builtAppPath)) {
 rmSync(stagedAppPath, { force: true, recursive: true });
 mkdirSync(stagedRoot, { recursive: true });
 cpSync(builtAppPath, stagedAppPath, { recursive: true });
+finishNativeBuild(stagedAppPath, path.dirname(repoRoot), netmeshDir, nativeBuild);
 // Match the companion staging path: local Xcode builds can carry provenance
 // metadata that prevents Developer ID re-signing of nested executables.
 execFileSync("xattr", ["-cr", stagedAppPath], { stdio: "inherit" });
