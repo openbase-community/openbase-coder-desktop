@@ -10,11 +10,12 @@
 // signed prebuilt published by the release pipeline. This is the boundary
 // that lets the Electron app sources be public while netmesh stays closed —
 // public contributors build the whole app from the downloaded artifact.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
+import { captureNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
 import {
   assertSupportedNetmeshBuild,
   resolveNetmeshPrebuiltPrefix,
@@ -121,6 +122,7 @@ if (!engineReady) {
   });
 }
 
+const nativeBuild = captureNativeBuild(path.dirname(repoRoot), netmeshDir);
 execFileSync("xcodegen", ["generate"], { cwd: netmeshDir, stdio: "inherit" });
 execFileSync(
   "xcodebuild",
@@ -146,23 +148,14 @@ if (!existsSync(builtAppPath)) {
   process.exit(1);
 }
 
-rmSync(stagedAppPath, { force: true, recursive: true });
-mkdirSync(stagedRoot, { recursive: true });
-cpSync(builtAppPath, stagedAppPath, { recursive: true });
-// Xcode can attach provenance metadata to nested unsigned executables. Remove
-// build-only extended attributes before signing so codesign can replace their
-// linker signatures on developer machines as reliably as it does in CI.
-execFileSync("xattr", ["-cr", stagedAppPath], { stdio: "inherit" });
-for (const executableName of ["tailscale", "tailscaled"]) {
-  signExecutable(
-    path.join(stagedAppPath, "Contents", "Resources", executableName),
-    `bundled ${executableName}`,
-  );
-}
-signExecutable(
-  path.join(stagedAppPath, "Contents", "MacOS", "netmesh-ctl"),
-  "bundled netmesh-ctl",
-);
-signAppBundle(stagedAppPath, "macOS Netmesh companion app");
+stageNativeBuild(builtAppPath, stagedAppPath, path.dirname(repoRoot), netmeshDir, nativeBuild, (app) => {
+  for (const name of ["tailscale", "tailscaled"]) {
+    signExecutable(path.join(app, "Contents/Resources", name), `bundled ${name}`);
+  }
+  for (const name of ["NetmeshHelper", "netmesh-ctl"]) {
+    signExecutable(path.join(app, "Contents/MacOS", name), `bundled ${name}`);
+  }
+  signAppBundle(app, "macOS Netmesh companion app");
+});
 verifyStagedCompanion();
 console.log(`[stage-netmesh-companion] staged ${stagedAppPath}`);

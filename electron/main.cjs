@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Notification, ipcMain, nativeTheme, session, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, Notification, ipcMain, nativeTheme, session, shell, systemPreferences } = require("electron");
 const { registerAppearance } = require("./appearance.cjs");
 const { registerWorkspaceKeyboard } = require("./workspace-keyboard.cjs");
+const { registerTextEditing } = require("./text-editing.cjs");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -37,6 +38,12 @@ const INSTALLER_COMMANDS = require("./installer-commands.json");
 const RUNTIME_DEFAULTS = require("./runtime-defaults.json");
 const APP_PACKAGE = require("../package.json");
 const nonDeveloperInstall = app.isPackaged && APP_PACKAGE.openbaseDevBuild !== true;
+const { captureDesktopProvenance } = require("./runtime-provenance.cjs");
+const desktopProvenance = captureDesktopProvenance({
+  appPackaged: app.isPackaged,
+  nonDeveloperInstall,
+  desktopDir: path.join(__dirname, ".."),
+});
 
 // Keep the established data location even though the visible product name is
 // now Openbase. This preserves auth state, updater identity, and one-time
@@ -930,6 +937,8 @@ function trustedHandle(channel, handler) {
   });
 }
 
+trustedHandle("openbase:developer-provenance", async () => desktopProvenance);
+
 trustedHandle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
 });
@@ -1457,6 +1466,7 @@ function createWindow() {
   });
   mainWindow = window;
   registerWorkspaceKeyboard(window.webContents);
+  registerTextEditing(window, Menu);
 
   // Avoid the blank-window flash: reveal once the renderer has painted.
   // ready-to-show is unreliable for hidden windows (observed never firing on

@@ -11,7 +11,6 @@ import {
 
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { identifyAnalyticsUser, productAnalytics, setAnalyticsUserId } from "./analytics";
-import { ProductAnalyticsPreference } from "./ProductAnalyticsPreference";
 import openbaseWordmarkUrl from "../assets/openbase-logo-and-text.svg";
 import { DesktopControlNotice } from "./DesktopControlNotice";
 import { StatusIcon } from "./onboarding/components/StatusIcon";
@@ -664,7 +663,6 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       <>
         <AppUpdateNotice />
         <DesktopControlNotice />
-        <ProductAnalyticsPreference />
         {children}
       </>
     );
@@ -677,7 +675,6 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     >
       <AppUpdateNotice />
       <DesktopControlNotice />
-      <ProductAnalyticsPreference />
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
