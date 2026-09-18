@@ -11,12 +11,12 @@
 // boundary that lets the Electron app sources be public while netmesh stays
 // closed — public contributors build the whole app from the downloaded
 // artifact.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
-import { captureNativeBuild, finishNativeBuild } from "./native-provenance.mjs";
+import { captureNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
 import {
   assertSupportedNetmeshBuild,
   resolveNetmeshPrebuiltPrefix,
@@ -149,25 +149,14 @@ if (!existsSync(builtAppPath)) {
   process.exit(1);
 }
 
-rmSync(stagedAppPath, { force: true, recursive: true });
-mkdirSync(stagedRoot, { recursive: true });
-cpSync(builtAppPath, stagedAppPath, { recursive: true });
-finishNativeBuild(stagedAppPath, path.dirname(repoRoot), netmeshDir, nativeBuild);
-// Match the companion staging path: local Xcode builds can carry provenance
-// metadata that prevents Developer ID re-signing of nested executables.
-execFileSync("xattr", ["-cr", stagedAppPath], { stdio: "inherit" });
-for (const resourceExecutable of ["tailscale", "tailscaled"]) {
-  signExecutable(
-    path.join(stagedAppPath, "Contents", "Resources", resourceExecutable),
-    `bundled ${resourceExecutable}`,
-  );
-}
-for (const embeddedExecutable of ["NetmeshHelper", "netmesh-ctl"]) {
-  signExecutable(
-    path.join(stagedAppPath, "Contents", "MacOS", embeddedExecutable),
-    `embedded ${embeddedExecutable}`,
-  );
-}
-signAppBundle(stagedAppPath, "macOS Netmesh menu-bar app");
+stageNativeBuild(builtAppPath, stagedAppPath, path.dirname(repoRoot), netmeshDir, nativeBuild, (app) => {
+  for (const name of ["tailscale", "tailscaled"]) {
+    signExecutable(path.join(app, "Contents/Resources", name), `bundled ${name}`);
+  }
+  for (const name of ["NetmeshHelper", "netmesh-ctl"]) {
+    signExecutable(path.join(app, "Contents/MacOS", name), `embedded ${name}`);
+  }
+  signAppBundle(app, "macOS Netmesh menu-bar app");
+});
 verifyStagedMenuBar();
 console.log(`[stage-netmesh-menubar] staged ${stagedAppPath}`);

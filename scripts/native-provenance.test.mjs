@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { captureNativeBuild, finishNativeBuild } from "./native-provenance.mjs";
+import { captureNativeBuild, finishNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
 
 test("native stamps bind source to linked images and reject a build race", { skip: process.platform !== "darwin" }, () => {
   const workspace = mkdtempSync(path.join(os.tmpdir(), "native-provenance-"));
@@ -19,10 +19,10 @@ test("native stamps bind source to linked images and reject a build race", { ski
     const commit = () => git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "Source");
     commit();
     const initial = captureNativeBuild(workspace, source);
-    const app = path.join(workspace, "OpenbaseNetmesh.app");
+    const app = path.join(workspace, "ProvenanceFixture.app");
     mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
     mkdirSync(path.join(app, "Contents/Resources"));
-    for (const name of ["OpenbaseNetmesh", "NetmeshHelper"]) cpSync("/usr/bin/true", path.join(app, "Contents/MacOS", name));
+    for (const name of ["ProvenanceFixture", "NetmeshHelper"]) cpSync("/usr/bin/true", path.join(app, "Contents/MacOS", name));
     finishNativeBuild(app, workspace, source, initial);
     const manifest = JSON.parse(readFileSync(path.join(app, "Contents/Resources/openbase-native-provenance.json")));
     assert.ok(manifest.image_uuids.NetmeshHelper.length);
@@ -36,4 +36,22 @@ test("native stamps bind source to linked images and reject a build race", { ski
     if (previousCI === undefined) delete process.env.CI; else process.env.CI = previousCI;
     rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test("signing failure never replaces the live bundle", { skip: process.platform !== "darwin" }, () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "native-stage-"));
+  try {
+    const built = path.join(root, "build/App.app");
+    const live = path.join(root, "live/App.app");
+    mkdirSync(built, { recursive: true });
+    mkdirSync(live, { recursive: true });
+    writeFileSync(path.join(built, "version"), "new");
+    writeFileSync(path.join(live, "version"), "old");
+    assert.throws(() => stageNativeBuild(built, live, root, root, null, incoming => {
+      assert.equal(readFileSync(path.join(live, "version"), "utf8"), "old");
+      assert.equal(readFileSync(path.join(incoming, "version"), "utf8"), "new");
+      throw new Error("signing failed");
+    }), /signing failed/);
+    assert.equal(readFileSync(path.join(live, "version"), "utf8"), "old");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
