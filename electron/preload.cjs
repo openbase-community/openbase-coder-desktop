@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld("__OPENBASE_RUNTIME_CONFIG__", {
   shell: "electron",
 });
 
+if (!nonDeveloperInstall) {
+  contextBridge.exposeInMainWorld("__OPENBASE_DEV_PROVENANCE__", {
+    getMain: () => ipcRenderer.invoke("openbase:developer-provenance"),
+  });
+}
+
 contextBridge.exposeInMainWorld("__OPENBASE_APPEARANCE__", {
   setTheme(theme) {
     ipcRenderer.send("openbase:appearance:set", theme);
