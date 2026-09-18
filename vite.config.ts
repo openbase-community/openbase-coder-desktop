@@ -1,6 +1,10 @@
+import { createRequire } from "node:module";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { defineConfig } from "vite";
+
+const require = createRequire(import.meta.url);
+const { provenancePlugin } = require("../coder-react/build/runtime-provenance.cjs");
 
 const sharedSrc = path.resolve(
   __dirname,
@@ -28,7 +32,7 @@ export default defineConfig(() => ({
     },
   },
   base: "./",
-  plugins: [react()],
+  plugins: [react(), provenancePlugin(path.resolve(__dirname, ".."), "desktop")],
   resolve: {
     alias: {
       "@": sharedSrc,

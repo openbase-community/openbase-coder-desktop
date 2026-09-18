@@ -38,6 +38,12 @@ const INSTALLER_COMMANDS = require("./installer-commands.json");
 const RUNTIME_DEFAULTS = require("./runtime-defaults.json");
 const APP_PACKAGE = require("../package.json");
 const nonDeveloperInstall = app.isPackaged && APP_PACKAGE.openbaseDevBuild !== true;
+const { captureDesktopProvenance } = require("./runtime-provenance.cjs");
+const desktopProvenance = captureDesktopProvenance({
+  appPackaged: app.isPackaged,
+  nonDeveloperInstall,
+  desktopDir: path.join(__dirname, ".."),
+});
 
 // Keep the established data location even though the visible product name is
 // now Openbase. This preserves auth state, updater identity, and one-time
@@ -930,6 +936,8 @@ function trustedHandle(channel, handler) {
     return handler(event, ...args);
   });
 }
+
+trustedHandle("openbase:developer-provenance", async () => desktopProvenance);
 
 trustedHandle("openbase:app-update:status", async () => {
   return { appVersion: app.getVersion(), ok: true, state: appUpdateState };
