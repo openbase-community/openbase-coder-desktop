@@ -6,6 +6,7 @@ export type RuntimeConfig = {
   nonDeveloperInstall?: boolean;
   routerBasename?: string;
   shell?: "web" | "electron";
+  platform?: string;
 };
 
 export type BackendStatus = "checking" | "ready" | "unavailable";
