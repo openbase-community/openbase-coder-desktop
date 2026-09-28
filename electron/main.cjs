@@ -1443,10 +1443,18 @@ function createWindow() {
     icon: appIconPath,
     backgroundColor: "#edf4ff",
     show: false,
-    // The console UI has no traffic-light inset of its own, so every window
-    // gets the standard macOS title bar — a hidden title bar would float the
-    // traffic lights over the sidebar wordmark. Vibrancy stays for the
-    // packaged app because onboarding renders on a transparent background.
+    // Hide the native macOS title bar so the console's own 44px top bar is
+    // the only chrome (like Obsidian). The traffic lights are inset to sit
+    // vertically centered in that bar; the console reserves space for them
+    // via `window.__OPENBASE_RUNTIME_CONFIG__.platform`.
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 13, y: 16 },
+        }
+      : {}),
+    // Vibrancy stays for the packaged app because onboarding renders on a
+    // transparent background.
     ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           vibrancy: "under-window",
