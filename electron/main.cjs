@@ -23,6 +23,7 @@ const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
+const { copyPackage, repairSeedSymlinks } = require("./standalone-package-copy.cjs");
 const {
   COMPANION_LOG_PATH,
   LOG_DIR,
@@ -214,6 +215,18 @@ const STANDALONE_CURRENT_LINK = path.join(STANDALONE_PACKAGE_ROOT, "current");
 const BUNDLED_CLI_RESOURCE_NAME = "OpenbaseCoderCLI";
 const PACKAGE_METADATA_FILENAME = "openbase-coder-package.json";
 const OPENBASE_CLI_BIN_NAME = process.platform === "win32" ? "openbase-coder.exe" : "openbase-coder";
+const checkedStandaloneRoots = new Set();
+
+async function repairActivatedSeedLinks(packageRoot) {
+  const root = await fsp.realpath(packageRoot);
+  if (checkedStandaloneRoots.has(root)) return;
+  const repaired = await repairSeedSymlinks(
+    root,
+    path.join(process.resourcesPath || "", BUNDLED_CLI_RESOURCE_NAME),
+  );
+  checkedStandaloneRoots.add(root);
+  if (repaired) mainLogger.info("desktop-cli-seed-links-repaired", { repaired });
+}
 
 function cliPathForPackage(packageRoot) {
   return path.join(packageRoot, "bin", OPENBASE_CLI_BIN_NAME);
@@ -265,24 +278,6 @@ async function bundledCliPackage() {
   return null;
 }
 
-async function copyPackage(sourceRoot, targetRoot) {
-  const tempRoot = `${targetRoot}.staging-${process.pid}-${Date.now()}`;
-  await fsp.rm(tempRoot, { force: true, recursive: true });
-  await fsp.mkdir(path.dirname(targetRoot), { recursive: true });
-  await fsp.cp(sourceRoot, tempRoot, {
-    dereference: false,
-    preserveTimestamps: true,
-    recursive: true,
-  });
-  await fsp.chmod(cliPathForPackage(tempRoot), 0o755);
-  const livekitPath = path.join(tempRoot, "bin", process.platform === "win32" ? "livekit-server.exe" : "livekit-server");
-  if (await pathExists(livekitPath)) {
-    await fsp.chmod(livekitPath, 0o755);
-  }
-  await fsp.rm(targetRoot, { force: true, recursive: true });
-  await fsp.rename(tempRoot, targetRoot);
-}
-
 async function pointCurrentAt(targetRoot) {
   await fsp.mkdir(STANDALONE_PACKAGE_ROOT, { recursive: true });
   await fsp.rm(STANDALONE_CURRENT_LINK, { force: true, recursive: true });
@@ -299,6 +294,7 @@ async function activateBundledCliPackageOnce() {
   // downgrade a self-updated install).
   const activeMetadata = await readPackageMetadata(STANDALONE_CURRENT_LINK);
   if (activeMetadata) {
+    await repairActivatedSeedLinks(STANDALONE_CURRENT_LINK);
     return {
       activated: true,
       cliPath: cliPathForPackage(STANDALONE_CURRENT_LINK),
@@ -323,6 +319,7 @@ async function activateBundledCliPackageOnce() {
     });
     await copyPackage(bundled.packageRoot, targetRoot);
   }
+  await repairActivatedSeedLinks(targetRoot);
   await pointCurrentAt(targetRoot);
   // Hand back the stable `current` path (not the versioned release dir) so
   // downstream consumers keep working after future self-updates re-point it.
@@ -1443,10 +1440,18 @@ function createWindow() {
     icon: appIconPath,
     backgroundColor: "#edf4ff",
     show: false,
-    // The console UI has no traffic-light inset of its own, so every window
-    // gets the standard macOS title bar — a hidden title bar would float the
-    // traffic lights over the sidebar wordmark. Vibrancy stays for the
-    // packaged app because onboarding renders on a transparent background.
+    // Hide the native macOS title bar so the console's own 44px top bar is
+    // the only chrome (like Obsidian). The traffic lights are inset to sit
+    // vertically centered in that bar; the console reserves space for them
+    // via `window.__OPENBASE_RUNTIME_CONFIG__.platform`.
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 13, y: 16 },
+        }
+      : {}),
+    // Vibrancy stays for the packaged app because onboarding renders on a
+    // transparent background.
     ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           vibrancy: "under-window",
