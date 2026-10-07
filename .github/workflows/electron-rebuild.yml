@@ -145,7 +145,7 @@ jobs:
 
   rebuild-macos:
     name: rebuild macOS
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 75
     env:
       APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
@@ -319,11 +319,10 @@ jobs:
       - name: Install macOS release dependencies
         run: |
           brew update
-          brew install imagemagick livekit xcodegen
-          livekit_server="$(command -v livekit-server)"
-          "$livekit_server" --version
+          # LiveKit is already signed inside the released CLI seed. Only the
+          # icon and companion build tools are needed on this runner.
+          brew install imagemagick xcodegen
           xcodegen --version
-          echo "LIVEKIT_SERVER_BIN=${livekit_server}" >> "$GITHUB_ENV"
 
       - name: Import Apple signing and notarization credentials
         run: |
