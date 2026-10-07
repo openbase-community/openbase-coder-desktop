@@ -23,7 +23,7 @@ const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
-const { copyPackage } = require("./standalone-package-copy.cjs");
+const { copyPackage, repairSeedSymlinks } = require("./standalone-package-copy.cjs");
 const {
   COMPANION_LOG_PATH,
   LOG_DIR,
@@ -215,6 +215,18 @@ const STANDALONE_CURRENT_LINK = path.join(STANDALONE_PACKAGE_ROOT, "current");
 const BUNDLED_CLI_RESOURCE_NAME = "OpenbaseCoderCLI";
 const PACKAGE_METADATA_FILENAME = "openbase-coder-package.json";
 const OPENBASE_CLI_BIN_NAME = process.platform === "win32" ? "openbase-coder.exe" : "openbase-coder";
+const checkedStandaloneRoots = new Set();
+
+async function repairActivatedSeedLinks(packageRoot) {
+  const root = await fsp.realpath(packageRoot);
+  if (checkedStandaloneRoots.has(root)) return;
+  const repaired = await repairSeedSymlinks(
+    root,
+    path.join(process.resourcesPath || "", BUNDLED_CLI_RESOURCE_NAME),
+  );
+  checkedStandaloneRoots.add(root);
+  if (repaired) mainLogger.info("desktop-cli-seed-links-repaired", { repaired });
+}
 
 function cliPathForPackage(packageRoot) {
   return path.join(packageRoot, "bin", OPENBASE_CLI_BIN_NAME);
@@ -282,6 +294,7 @@ async function activateBundledCliPackageOnce() {
   // downgrade a self-updated install).
   const activeMetadata = await readPackageMetadata(STANDALONE_CURRENT_LINK);
   if (activeMetadata) {
+    await repairActivatedSeedLinks(STANDALONE_CURRENT_LINK);
     return {
       activated: true,
       cliPath: cliPathForPackage(STANDALONE_CURRENT_LINK),
@@ -306,6 +319,7 @@ async function activateBundledCliPackageOnce() {
     });
     await copyPackage(bundled.packageRoot, targetRoot);
   }
+  await repairActivatedSeedLinks(targetRoot);
   await pointCurrentAt(targetRoot);
   // Hand back the stable `current` path (not the versioned release dir) so
   // downstream consumers keep working after future self-updates re-point it.
