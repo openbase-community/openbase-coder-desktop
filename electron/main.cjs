@@ -23,6 +23,7 @@ const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
+const { copyPackage } = require("./standalone-package-copy.cjs");
 const {
   COMPANION_LOG_PATH,
   LOG_DIR,
@@ -263,24 +264,6 @@ async function bundledCliPackage() {
     }
   }
   return null;
-}
-
-async function copyPackage(sourceRoot, targetRoot) {
-  const tempRoot = `${targetRoot}.staging-${process.pid}-${Date.now()}`;
-  await fsp.rm(tempRoot, { force: true, recursive: true });
-  await fsp.mkdir(path.dirname(targetRoot), { recursive: true });
-  await fsp.cp(sourceRoot, tempRoot, {
-    dereference: false,
-    preserveTimestamps: true,
-    recursive: true,
-  });
-  await fsp.chmod(cliPathForPackage(tempRoot), 0o755);
-  const livekitPath = path.join(tempRoot, "bin", process.platform === "win32" ? "livekit-server.exe" : "livekit-server");
-  if (await pathExists(livekitPath)) {
-    await fsp.chmod(livekitPath, 0o755);
-  }
-  await fsp.rm(targetRoot, { force: true, recursive: true });
-  await fsp.rename(tempRoot, targetRoot);
 }
 
 async function pointCurrentAt(targetRoot) {
