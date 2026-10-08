@@ -10,12 +10,13 @@
 // signed prebuilt published by the release pipeline. This is the boundary
 // that lets the Electron app sources be public while netmesh stays closed —
 // public contributors build the whole app from the downloaded artifact.
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
 import { captureNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
+import { downloadNativeBundle } from "./native-bundle-staging.mjs";
 import {
   assertSupportedNetmeshBuild,
   resolveNetmeshPrebuiltPrefix,
@@ -41,8 +42,8 @@ const prebuiltCompanionUrl =
   process.env.OPENBASE_NETMESH_COMPANION_URL ??
   `https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${releasePrefix}/${COMPANION_ZIP_NAME}`;
 
-function verifyStagedCompanion() {
-  const infoPlist = path.join(stagedAppPath, "Contents", "Info.plist");
+function verifyStagedCompanion(app = stagedAppPath) {
+  const infoPlist = path.join(app, "Contents", "Info.plist");
   const build = execFileSync(
     "/usr/libexec/PlistBuddy",
     ["-c", "Print :CFBundleVersion", infoPlist],
@@ -52,26 +53,8 @@ function verifyStagedCompanion() {
 }
 
 function downloadPrebuiltCompanion() {
-  const zipPath = path.join(stagedRoot, COMPANION_ZIP_NAME);
-  mkdirSync(stagedRoot, { recursive: true });
-  console.log(
-    `[stage-netmesh-companion] downloading prebuilt companion from ${prebuiltCompanionUrl}`,
-  );
-  execFileSync("curl", ["-fL", "--retry", "3", "-o", zipPath, prebuiltCompanionUrl], {
-    stdio: "inherit",
-  });
-  rmSync(stagedAppPath, { force: true, recursive: true });
-  // ditto preserves the code signature and extended attributes; unzip may not.
-  execFileSync("ditto", ["-x", "-k", zipPath, stagedRoot], { stdio: "inherit" });
-  rmSync(zipPath, { force: true });
-  if (!existsSync(stagedAppPath)) {
-    throw new Error(
-      `[stage-netmesh-companion] ${COMPANION_ZIP_NAME} did not contain OpenbaseNetmeshCompanion.app`,
-    );
-  }
-  verifyStagedCompanion();
-  execFileSync("codesign", ["--verify", "--deep", stagedAppPath], { stdio: "inherit" });
-  console.log(`[stage-netmesh-companion] staged prebuilt ${stagedAppPath}`);
+  downloadNativeBundle(stagedAppPath, prebuiltCompanionUrl, COMPANION_ZIP_NAME, verifyStagedCompanion);
+  console.log(`[stage-netmesh] staged prebuilt ${stagedAppPath}`);
 }
 
 const netmeshDirCandidates = [
@@ -97,7 +80,8 @@ if (!netmeshDir) {
   process.exit(0);
 }
 
-const derivedDataPath = path.join(stagedRoot, "netmesh-derivedData");
+mkdirSync(stagedRoot, { recursive: true });
+const derivedDataPath = mkdtempSync(path.join(stagedRoot, ".netmesh-derivedData-"));
 const builtAppPath = path.join(
   derivedDataPath,
   "Build",
@@ -156,6 +140,5 @@ stageNativeBuild(builtAppPath, stagedAppPath, path.dirname(repoRoot), netmeshDir
     signExecutable(path.join(app, "Contents/MacOS", name), `bundled ${name}`);
   }
   signAppBundle(app, "macOS Netmesh companion app");
-});
-verifyStagedCompanion();
+}, verifyStagedCompanion);
 console.log(`[stage-netmesh-companion] staged ${stagedAppPath}`);
