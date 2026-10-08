@@ -4,8 +4,9 @@
 # netmesh-macos repo (see OPEN_SOURCE_BOUNDARY.md); builds use the sibling
 # checkout or the signed prebuilt artifact.
 #
-# Installed via `git config core.hooksPath .githooks` (run by `npm install`
-# through the package.json "prepare" script).
+# Standalone clones install it via the package.json "prepare" script. Inside
+# the Openbase Coder multi workspace, the workspace .githooks/pre-push runs it
+# after the workspace secret scan.
 
 FORBIDDEN='^netmesh-macos/'
 ZERO=0000000000000000000000000000000000000000

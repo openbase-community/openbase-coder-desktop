@@ -18,9 +18,11 @@ keep both sides buildable.
 - **The netmesh companion** — the OpenbaseNetmesh app, NetmeshHelper,
   NetmeshCtl, and the pinned Tailscale engine build. It lives in the private
   `netmesh-macos` repo (workspace `internal` install set), extracted from this
-  repo on 2026-09-03. A pre-push hook (`.githooks/pre-push`, installed by the
-  package.json `prepare` script) blocks `netmesh-macos/` paths from ever
-  re-entering this repo's history.
+  repo on 2026-09-03. A pre-push hook (`.githooks/pre-push`) blocks
+  `netmesh-macos/` paths from ever re-entering this repo's history. In a
+  standalone clone the package.json `prepare` script installs it; inside the
+  Openbase Coder multi workspace the workspace hooks run it after their own
+  checks.
 
 ## How a public checkout builds without netmesh source
 
