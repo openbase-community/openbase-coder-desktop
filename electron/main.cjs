@@ -18,7 +18,7 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
-const { isExpectedCodeSignatureOutput, menuBarAppCandidates } = require("./menu-bar-app.cjs");
+const { isExpectedCodeSignatureOutput, menuBarAppCandidates, mappedMenuBarExecutableMatches } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
@@ -1611,7 +1611,22 @@ async function ensureMenuBarApp() {
     const running = await runningMenuBarApps();
     let compatibleRunning = false;
     for (const runningApp of running) {
-      const compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      let compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      if (compatibility.ok) {
+        const mapped = await captureSpawn("/usr/sbin/lsof", ["-a", "-p", runningApp.pid, "-d", "txt", "-F", "fDin"]);
+        const executable = path.join(runningApp.appPath, "Contents", "MacOS", "OpenbaseNetmesh");
+        const stat = await fsp.stat(executable, { bigint: true }).catch((error) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+        const matches = stat && mapped.code === 0 ? mappedMenuBarExecutableMatches(mapped.stdout, stat) : null;
+        if (matches === false) {
+          compatibility = { ok: false, reason: "running executable belongs to a replaced app bundle" };
+        } else if (matches === null) {
+          // Retry inspection on the next sweep without killing an unidentified process.
+          mainLogger.warn("menu-bar-executable-inspection-unavailable", { pid: runningApp.pid });
+        }
+      }
       if (compatibility.ok) {
         compatibleRunning = true;
       } else {
@@ -1642,7 +1657,9 @@ async function ensureMenuBarApp() {
       }
       return;
     }
-    const opened = await captureSpawn("open", ["-g", candidate]);
+    // A stale instance may still be processing SIGTERM; do not let Launch
+    // Services route this launch back to that outgoing process.
+    const opened = await captureSpawn("open", ["-n", "-g", candidate]);
     if (opened.code === 0) {
       mainLogger.info("menu-bar-launched", { candidate });
     } else {
