@@ -9,14 +9,18 @@ function fixture(overrides = {}) {
   const updater = new EventEmitter();
   const calls = [];
   const scheduled = [];
+  const timers = new Map();
+  let timerId = 0;
   updater.checkForUpdates = async () => { calls.push("check"); };
   updater.quitAndInstall = () => calls.push("install");
   const controller = createAppUpdateController({
     autoUpdater: updater, getPolicy: () => policy, getState: () => state,
     setState: (patch) => { state = { ...state, ...patch }; },
+    setTimer: (cb, delay) => { const id = ++timerId; timers.set(id, { cb, delay }); return id; },
+    clearTimer: (id) => timers.delete(id),
     logger: { info() {} }, schedule: (callback) => scheduled.push(callback),
   });
-  return { policy, updater, controller, calls, scheduled };
+  return { policy, updater, controller, calls, scheduled, timers, getState: () => state };
 }
 
 for (const [name, policy] of Object.entries({
@@ -51,7 +55,7 @@ test("production install checks, downloads and explicitly installs", () => {
   assert.equal(updater.autoInstallOnAppQuit, false, "must not pre-arm Squirrel before a guarded quit");
   assert.equal(controller.install().ok, true);
   scheduled[0]();
-  assert.deepEqual(calls, ["check", "check", "install"]);
+  assert.deepEqual(calls, ["check", "install"]);
 });
 
 test("switching to developer mode during download suppresses installation", () => {
@@ -100,4 +104,60 @@ test("developer switch after download allows an ordinary quit without handing of
   controller.beforeQuit({ preventDefault: () => assert.fail("developer quit prevented") });
   assert.deepEqual(calls, ["check"]);
   assert.deepEqual(scheduled, []);
+});
+
+const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+test("offline startup retries without restarting the app, then checks periodically", async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.updater.checkForUpdates = async () => {
+    attempts++;
+    if (attempts < 3) throw new Error("network unavailable");
+    f.updater.emit("update-not-available");
+  };
+  f.controller.check();
+  await settled();
+  assert.equal(f.getState().status, "error");
+  let timer = [...f.timers.values()][0];
+  assert.equal(timer.delay, 60_000);
+  f.timers.clear(); timer.cb();
+  await settled();
+  timer = [...f.timers.values()][0];
+  assert.equal(timer.delay, 120_000);
+  f.timers.clear(); timer.cb();
+  await settled();
+  assert.equal(attempts, 3);
+  assert.equal([...f.timers.values()][0].delay, 6 * 60 * 60_000);
+});
+
+test("partial download retries, and download readiness stops the timer", async () => {
+  const f = fixture();
+  let fail;
+  f.updater.checkForUpdates = async () => ({ downloadPromise: new Promise((_, reject) => { fail = reject; }) });
+  f.controller.check();
+  await settled();
+  assert.equal(f.timers.size, 0);
+  assert.equal(f.controller.install().ok, false);
+  fail(new Error("connection reset halfway through zip"));
+  await settled();
+  assert.equal([...f.timers.values()][0].delay, 60_000);
+  f.updater.checkForUpdates = async () => { f.updater.emit("update-downloaded", { version: "2" }); };
+  const timer = [...f.timers.values()][0]; f.timers.clear(); timer.cb();
+  await settled();
+  assert.equal(f.getState().status, "downloaded");
+  assert.equal(f.timers.size, 0);
+});
+
+test("pending network retry honors a developer switch", async () => {
+  const f = fixture();
+  f.updater.checkForUpdates = async () => { f.calls.push("check"); throw new Error("offline"); };
+  f.controller.check();
+  await settled();
+  const timer = [...f.timers.values()][0]; f.timers.clear();
+  f.policy.installation = { standalone: false };
+  timer.cb();
+  await settled();
+  assert.deepEqual(f.calls, ["check"]);
+  assert.equal(f.timers.size, 0);
 });
