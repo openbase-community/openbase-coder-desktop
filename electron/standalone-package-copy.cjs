@@ -22,8 +22,13 @@ async function copyPackage(sourceRoot, targetRoot) {
   })) {
     await fsp.chmod(livekitPath, 0o755);
   }
-  await fsp.rm(targetRoot, { force: true, recursive: true });
-  await fsp.rename(tempRoot, targetRoot);
+  try {
+    // A concurrent installer may have published this release while we copied.
+    // Never remove a release directory another process could be executing.
+    await fsp.rename(tempRoot, targetRoot);
+  } finally {
+    await fsp.rm(tempRoot, { force: true, recursive: true });
+  }
 }
 
 async function repairSeedSymlinks(packageRoot, seedRoot) {

@@ -3,6 +3,10 @@ const test = require("node:test");
 
 const { isDeveloperDashboardOnly } = require("./developer-dashboard.cjs");
 
+test("locally packaged developer builds remain dashboard-only", () => {
+  assert.equal(isDeveloperDashboardOnly({ appPackaged: true, appDevBuild: true }), true);
+});
+
 test("every unpackaged Electron launch is dashboard-only", () => {
   assert.equal(isDeveloperDashboardOnly({ appPackaged: false, envValue: "1" }), true);
   assert.equal(isDeveloperDashboardOnly({ appPackaged: false, envValue: undefined }), true);
