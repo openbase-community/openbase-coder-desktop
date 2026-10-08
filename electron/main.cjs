@@ -58,16 +58,22 @@ app.setName("Openbase");
 const rendererUrl = process.env.OPENBASE_CODER_DESKTOP_RENDERER_URL;
 const backendBaseUrl =
   process.env.OPENBASE_CODER_DESKTOP_BACKEND_URL || RUNTIME_DEFAULTS.backendBaseUrl;
-let activeInstallation = null;
-try {
-  activeInstallation = JSON.parse(
-    fs.readFileSync(path.join(os.homedir(), ".openbase", "installation.json"), "utf8"),
-  );
-} catch {
-  // First production launch has no installation yet; onboarding stays enabled.
+function readActiveInstallation() {
+  try {
+    const installation = JSON.parse(
+      fs.readFileSync(path.join(os.homedir(), ".openbase", "installation.json"), "utf8"),
+    );
+    return typeof installation?.standalone === "boolean" ? installation : { standalone: false };
+  } catch (error) {
+    // First production launch has no installation. Unreadable install mode
+    // must not enable release installation over a developer workspace.
+    return error.code === "ENOENT" ? null : { standalone: false };
+  }
 }
+const activeInstallation = readActiveInstallation();
 const developerDashboardOnly = isDeveloperDashboardOnly({
   appPackaged: app.isPackaged,
+  appDevBuild: APP_PACKAGE.openbaseDevBuild,
   // The /Applications launcher stub starts Electron through `open -a`, which
   // cannot pass environment variables — accept the argv form too.
   envValue: process.argv.includes("--openbase-dev-dashboard")
@@ -75,6 +81,9 @@ const developerDashboardOnly = isDeveloperDashboardOnly({
     : process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
   installation: activeInstallation,
 });
+function isDeveloperInstallation() {
+  return developerDashboardOnly || readActiveInstallation()?.standalone === false;
+}
 const appIconPath = path.join(__dirname, "..", "assets", "openbase-coder-icon.png");
 const mainLogger = installConsoleFileLogger("electron-main", MAIN_LOG_PATH);
 const rendererLogger = createFileLogger("electron-renderer", RENDERER_LOG_PATH);
@@ -279,6 +288,9 @@ async function bundledCliPackage() {
 }
 
 async function pointCurrentAt(targetRoot) {
+  if (isDeveloperInstallation()) {
+    throw new Error("Developer installations cannot activate bundled releases.");
+  }
   await fsp.mkdir(STANDALONE_PACKAGE_ROOT, { recursive: true });
   await fsp.rm(STANDALONE_CURRENT_LINK, { force: true, recursive: true });
   // Real symlinks need admin/developer-mode on Windows; a directory
@@ -287,6 +299,9 @@ async function pointCurrentAt(targetRoot) {
 }
 
 async function activateBundledCliPackageOnce() {
+  if (isDeveloperInstallation()) {
+    return { activated: false, detail: "Developer installations use the workspace CLI; bundled activation is disabled." };
+  }
   // Forward-only activation (AUTO_UPDATE.md): the bundled package is a
   // first-install seed only. Once `current` resolves to a valid install, the
   // release feed is the sole authority for what `current` points at — never
@@ -343,7 +358,7 @@ async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   // A development installation's single source of truth is the workspace CLI
   // on PATH. Never activate the bundled package there, and don't let a stale
   // activated standalone package (whose runtime may be long gone) shadow it.
-  if (developerDashboardOnly) {
+  if (isDeveloperInstallation()) {
     const devDetail = "Using the development workspace openbase-coder on PATH.";
     if (cachedDevCliPath) {
       return { detail: devDetail, path: cachedDevCliPath, source: "path" };
@@ -356,7 +371,7 @@ async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
       cachedDevCliPath = devPathCli;
       return { detail: devDetail, path: devPathCli, source: "path" };
     }
-    activateBundled = false;
+    return { path: null, source: "path", detail: "The development workspace openbase-coder was not found on PATH." };
   }
   if (activateBundled) {
     try {
@@ -641,6 +656,9 @@ if (!gotSingleInstanceLock) {
 }
 
 async function commandWithOptions(commandId, options = {}) {
+  if (commandId === "selfUpdate" && isDeveloperInstallation()) {
+    throw new Error("Development workspace installs are git-managed; no release updates.");
+  }
   const command = INSTALLER_COMMANDS[commandId];
   if (!command) {
     return null;
@@ -860,50 +878,22 @@ function setAppUpdateState(patch) {
   }
 }
 
-function checkForAppUpdates() {
-  autoUpdater.checkForUpdates().catch(() => {
-    // The "error" event handler already recorded and logged the failure.
-  });
-}
-
-function setupAppAutoUpdater() {
-  if (!app.isPackaged) {
-    mainLogger.info("app-update-disabled", { reason: "unpackaged development build" });
-    return;
-  }
-  // Locally packaged dev installs must not "update" themselves from the
-  // production feed (set by scripts or runtime-defaults.json).
-  if (
-    process.env.OPENBASE_DESKTOP_DISABLE_AUTOUPDATE === "1" ||
-    RUNTIME_DEFAULTS.disableAutoUpdate === true ||
-    APP_PACKAGE.openbaseDevBuild === true
-  ) {
-    mainLogger.info("app-update-disabled", { reason: "auto-update disabled for this build" });
-    return;
-  }
-
-  autoUpdater.logger = mainLogger;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("checking-for-update", () => {
-    setAppUpdateState({ error: null, status: "checking" });
-  });
-  autoUpdater.on("update-available", (info) => {
-    setAppUpdateState({ error: null, status: "downloading", version: info?.version ?? null });
-  });
-  autoUpdater.on("update-not-available", () => {
-    setAppUpdateState({ error: null, status: "up-to-date", version: null });
-  });
-  autoUpdater.on("update-downloaded", (info) => {
-    setAppUpdateState({ error: null, status: "downloaded", version: info?.version ?? null });
-  });
-  autoUpdater.on("error", (error) => {
-    setAppUpdateState({ error: error?.message ?? String(error), status: "error" });
-  });
-
-  checkForAppUpdates();
-}
+const { createAppUpdateController } = require("./app-updates.cjs");
+const appUpdates = createAppUpdateController({
+  autoUpdater,
+  getPolicy: () => ({
+    appPackaged: app.isPackaged,
+    appDevBuild: APP_PACKAGE.openbaseDevBuild === true,
+    developerDashboardOnly,
+    installation: readActiveInstallation(),
+    disabledByEnv: process.env.OPENBASE_DESKTOP_DISABLE_AUTOUPDATE,
+    disabledByDefaults: RUNTIME_DEFAULTS.disableAutoUpdate,
+  }),
+  getState: () => appUpdateState,
+  setState: setAppUpdateState,
+  logger: mainLogger,
+});
+app.on("before-quit", (event) => appUpdates.beforeQuit(event));
 
 // The preload re-executes (bridge included) in any page the window ends up
 // displaying, so no IPC channel may assume its caller is our UI. A sender is
@@ -997,13 +987,7 @@ trustedHandle("openbase:auth:local-api-token", async () => {
   return fetchLocalApiToken();
 });
 
-trustedHandle("openbase:app-update:check", async () => {
-  if (!app.isPackaged) {
-    return { ok: false, error: "Auto-update is disabled in development builds." };
-  }
-  checkForAppUpdates();
-  return { ok: true, state: appUpdateState };
-});
+trustedHandle("openbase:app-update:check", async () => appUpdates.check());
 
 // --- Desktop control server health ------------------------------------------
 // If the localhost control server fails to start (port exhaustion, control
@@ -1032,15 +1016,7 @@ trustedHandle("openbase:desktop-control:status", async () => {
   return { ok: true, state: desktopControlState };
 });
 
-trustedHandle("openbase:app-update:quit-and-install", async () => {
-  if (appUpdateState.status !== "downloaded") {
-    return { ok: false, error: "No downloaded update is ready to install." };
-  }
-  mainLogger.info("app-update-quit-and-install", { version: appUpdateState.version });
-  // Let the invoke reply reach the renderer before tearing the app down.
-  setImmediate(() => autoUpdater.quitAndInstall());
-  return { ok: true };
-});
+trustedHandle("openbase:app-update:quit-and-install", async () => appUpdates.install());
 
 mainLogger.info("desktop-app starting", {
   backendBaseUrl,
@@ -1737,13 +1713,13 @@ if (gotSingleInstanceLock) {
   fetchLocalApiToken().catch(() => {});
   createWindow();
   void reconcileNetmeshHelperOnLaunch({
-    enabled: nonDeveloperInstall && process.platform === "darwin",
+    enabled: nonDeveloperInstall && !isDeveloperInstallation() && process.platform === "darwin",
     readTailnetConfig: readTailnetConfigViaCli,
     register: () => netmeshCompanion.register(),
     repairAfterAppUpdate: () => netmeshCompanion.repairAfterAppUpdate(),
     logger: mainLogger,
   });
-  setupAppAutoUpdater();
+  appUpdates.check();
   // Let the first window paint before possibly showing the installer
   // cleanup dialog on a fresh install.
   setTimeout(() => {
@@ -1772,7 +1748,10 @@ if (gotSingleInstanceLock) {
   });
 }
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  // A guarded update may pause quitting while the native installer stages.
+  // Keep the running app usable if staging fails or installation is canceled.
+  if (event.defaultPrevented) return;
   desktopControlServer?.stop();
   liveKitCompanion.cleanup?.();
   // Tears down only the control process — the netmesh VPN is a launchd daemon
