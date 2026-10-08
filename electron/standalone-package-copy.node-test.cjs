@@ -54,3 +54,19 @@ test("repairs legacy seed links using the installed version without following ot
   assert.equal(await fsp.readFile(path.join(installed, "python", "bin", "python3"), "utf8"), "old runtime");
   assert.equal(await repairSeedSymlinks(installed, seed), 0);
 });
+
+
+test("a seed copy cannot replace an already published runtime", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "seed-race-"));
+  t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const seed = path.join(root, "seed");
+  const target = path.join(root, "release");
+  await fsp.mkdir(path.join(seed, "bin"), { recursive: true });
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  await fsp.writeFile(path.join(seed, "bin", `openbase-coder${suffix}`), "older seed");
+  await fsp.mkdir(target);
+  await fsp.writeFile(path.join(target, "in-use"), "active runtime");
+  await assert.rejects(copyPackage(seed, target));
+  assert.equal(await fsp.readFile(path.join(target, "in-use"), "utf8"), "active runtime");
+  assert.deepEqual((await fsp.readdir(root)).sort(), ["release", "seed"]);
+});

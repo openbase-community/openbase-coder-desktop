@@ -98,3 +98,14 @@ test("pausing quit for native staging keeps app control services alive", () => {
   callback({ defaultPrevented: false });
   assert.deepEqual(calls, ["control", "livekit", "netmesh"]);
 });
+
+
+test("a competing runtime activation wins over desktop seed publication", async () => {
+  const pointCurrent = entryPoint("async function pointCurrentAt(", "async function activateBundledCliPackageOnce()", {
+    developerDashboardOnly: false, readActiveInstallation: () => ({ standalone: true }),
+    STANDALONE_PACKAGE_ROOT: "/fixture/packages", STANDALONE_CURRENT_LINK: "/fixture/current", IS_WINDOWS: false,
+    fsp: { mkdir: async () => {}, symlink: async () => { throw Object.assign(new Error("exists"), { code: "EEXIST" }); } },
+    readPackageMetadata: async () => ({ version: "newer" }),
+  });
+  assert.equal(await pointCurrent("/fixture/older-seed"), false);
+});

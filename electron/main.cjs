@@ -292,10 +292,20 @@ async function pointCurrentAt(targetRoot) {
     throw new Error("Developer installations cannot activate bundled releases.");
   }
   await fsp.mkdir(STANDALONE_PACKAGE_ROOT, { recursive: true });
-  await fsp.rm(STANDALONE_CURRENT_LINK, { force: true, recursive: true });
   // Real symlinks need admin/developer-mode on Windows; a directory
   // junction resolves the same way for our purposes and never prompts.
-  await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, IS_WINDOWS ? "junction" : "dir");
+  try {
+    // Exclusive creation: a CLI update/other installer that won this race
+    // owns current. Never unlink its pointer to publish our older seed.
+    await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, IS_WINDOWS ? "junction" : "dir");
+    return true;
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    if (!(await readPackageMetadata(STANDALONE_CURRENT_LINK))) {
+      throw new Error("Existing CLI runtime is incomplete; refusing to overwrite it with the desktop seed.");
+    }
+    return false;
+  }
 }
 
 async function activateBundledCliPackageOnce() {
@@ -335,15 +345,16 @@ async function activateBundledCliPackageOnce() {
     await copyPackage(bundled.packageRoot, targetRoot);
   }
   await repairActivatedSeedLinks(targetRoot);
-  await pointCurrentAt(targetRoot);
+  const seeded = await pointCurrentAt(targetRoot);
+  const metadata = await readPackageMetadata(STANDALONE_CURRENT_LINK);
   // Hand back the stable `current` path (not the versioned release dir) so
   // downstream consumers keep working after future self-updates re-point it.
   return {
     activated: true,
     cliPath: cliPathForPackage(STANDALONE_CURRENT_LINK),
-    detail: `Activated bundled Openbase CLI ${bundled.metadata.version}.`,
-    metadata: bundled.metadata,
-    source: "bundled",
+    detail: `Activated Openbase CLI ${metadata.version}.`,
+    metadata,
+    source: seeded ? "bundled" : "activated",
   };
 }
 
