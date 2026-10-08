@@ -3,8 +3,9 @@
 // potentially replaced executable on disk.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { stageNativeBundle } from "./native-bundle-staging.mjs";
 
 export function captureNativeBuild(workspace, source) {
   if (process.env.CI || !existsSync(path.join(workspace, "multi.json"))) return null;
@@ -46,27 +47,12 @@ export function finishNativeBuild(app, workspace, source, initial) {
     JSON.stringify({ ...initial, image_uuids: imageUUIDs }) + "\n");
 }
 
-export function stageNativeBuild(builtApp, destination, workspace, source, initial, sign) {
-  mkdirSync(path.dirname(destination), { recursive: true });
-  const temporary = mkdtempSync(path.join(path.dirname(destination), ".native-stage-"));
-  const incoming = path.join(temporary, path.basename(destination));
-  const previous = path.join(temporary, "previous.app");
-  try {
+export function stageNativeBuild(builtApp, destination, workspace, source, initial, sign, validate = () => {}) {
+  return stageNativeBundle(destination, incoming => {
     cpSync(builtApp, incoming, { recursive: true });
     finishNativeBuild(incoming, workspace, source, initial);
     execFileSync("xattr", ["-cr", incoming], { stdio: "inherit" });
     sign(incoming);
-    execFileSync("codesign", ["--verify", "--deep", incoming], { stdio: "inherit" });
-    // Never expose unsigned tools to concurrent status probes/watchdogs.
-    if (existsSync(destination)) renameSync(destination, previous);
-    try {
-      renameSync(incoming, destination);
-    } catch (error) {
-      if (existsSync(previous)) renameSync(previous, destination);
-      throw error;
-    }
-  } finally {
-    // Preserve recovery evidence if even restoring the old bundle failed.
-    if (!existsSync(previous) || existsSync(destination)) rmSync(temporary, { recursive: true, force: true });
-  }
+    validate(incoming);
+  });
 }
