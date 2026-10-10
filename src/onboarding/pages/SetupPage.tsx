@@ -124,7 +124,7 @@ export function SetupPage({
       support={
         setupBackend === NORMAL_ONBOARDING_BACKEND
           ? "Openbase Cloud is the normal setup path: Claude Code and voice audio through Openbase Cloud. Your Openbase account is the only sign-in you will need."
-          : "Openbase will use your existing coding-agent subscription and manage voice audio. You will sign in once to Openbase and once to your selected coding agent."
+          : "Openbase will use your existing coding-agent subscription and handle voice audio. You will sign in once to Openbase and once to your selected coding agent."
       }
     >
       <div className="mb-5 space-y-5">
@@ -157,12 +157,8 @@ export function SetupPage({
             })}
           </div>
           <p className="mt-2 text-xs leading-5 text-zinc-600">
-            Openbase Cloud manages voice audio either way. If you choose Yes,
-            setup imports the CLI&apos;s own sign-in into Openbase&apos;s
-            separate agent homes — your Codex CLI login is linked and your
-            Claude Code CLI login is copied, leaving your normal CLI setup
-            untouched. Desktop app or IDE sign-ins can&apos;t be imported; if
-            the CLI isn&apos;t signed in yet, the Agent sign-in step will
+            Openbase Cloud handles voice audio either way. If you choose Yes
+            and the CLI isn&apos;t signed in yet, the Agent sign-in step will
             finish it.
           </p>
 
