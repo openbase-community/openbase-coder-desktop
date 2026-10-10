@@ -40,6 +40,7 @@ import {
   deriveOnboardingStep,
   onboardingFlowIndex,
   resolveOnboardingPage,
+  shouldAutoAcknowledgePairing,
   visibleOnboardingFlow,
 } from "./onboarding/deriveStep";
 import {
@@ -350,7 +351,7 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
       ? ["Waiting for the CLI to report live voice-service readiness."]
       : []),
   ];
-  const onboardingFacts = {
+  const observedOnboardingFacts = {
     backendAuthReady,
     backendReady: backendReadyForOnboarding,
     installerPresent: Boolean(installer),
@@ -364,6 +365,24 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     voiceConfigured,
     welcomeAcknowledged,
   };
+  // A live, healthy pair proves pairing even when this installation never
+  // recorded the acknowledgement (paired via CLI/phone, flags file missing).
+  const pairingAutoAcknowledged =
+    !forceOnboarding &&
+    shouldAutoAcknowledgePairing(observedOnboardingFacts, {
+      cliStatusResolved: cliStatusChecked,
+      cloudStateResolved: cloudState !== null,
+      flagsLoaded,
+    });
+  const onboardingFacts = pairingAutoAcknowledged
+    ? { ...observedOnboardingFacts, pairingAcknowledged: true }
+    : observedOnboardingFacts;
+
+  useEffect(() => {
+    if (pairingAutoAcknowledged) {
+      acknowledgePairing();
+    }
+  }, [acknowledgePairing, pairingAutoAcknowledged]);
 
   // The step the flow is on is a pure function of observable facts, so no
   // entry path (deep link, resume, reinstall) can land beyond reality.

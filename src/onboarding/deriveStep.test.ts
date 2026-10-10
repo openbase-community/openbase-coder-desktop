@@ -6,6 +6,7 @@ import {
   deriveOnboardingPageStates,
   deriveOnboardingStep,
   resolveOnboardingPage,
+  shouldAutoAcknowledgePairing,
   visibleOnboardingFlow,
   type LaunchProbes,
   type OnboardingFacts,
@@ -453,5 +454,59 @@ describe("deriveOnboardingPageStates", () => {
 
     expect(states.pairing).toBe("done");
     expect(states.verify).toBe("current");
+  });
+});
+
+describe("shouldAutoAcknowledgePairing", () => {
+  const resolved = { cliStatusResolved: true, cloudStateResolved: true, flagsLoaded: true };
+  // A machine paired outside the wizard: everything works, but the durable
+  // flag was never written and this session never saw the welcome page.
+  const pairedWithoutFlag = facts({ pairingAcknowledged: false, welcomeAcknowledged: false });
+
+  it("acknowledges a live, healthy pair whose flag was never written", () => {
+    expect(deriveOnboardingStep(pairedWithoutFlag)).toBe("welcome");
+    expect(shouldAutoAcknowledgePairing(pairedWithoutFlag, resolved)).toBe(true);
+    expect(deriveOnboardingComplete({ ...pairedWithoutFlag, pairingAcknowledged: true })).toBe(
+      true,
+    );
+  });
+
+  it("does nothing when the flag is already set", () => {
+    expect(shouldAutoAcknowledgePairing(allDone, resolved)).toBe(false);
+  });
+
+  it("waits for the flags file, CLI status and cloud state to resolve", () => {
+    for (const key of ["cliStatusResolved", "cloudStateResolved", "flagsLoaded"] as const) {
+      expect(shouldAutoAcknowledgePairing(pairedWithoutFlag, { ...resolved, [key]: false })).toBe(
+        false,
+      );
+    }
+  });
+
+  it("requires the pair to be live: healthy network and a recent phone", () => {
+    expect(
+      shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, tailscalePaired: false }, resolved),
+    ).toBe(false);
+    expect(
+      shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, mobileRecentlyActive: false }, resolved),
+    ).toBe(false);
+  });
+
+  it("never skips an earlier unmet step", () => {
+    for (const broken of [
+      { loggedIn: false },
+      { backendReady: false, setupSucceeded: false },
+      { requiredPrerequisitesOk: false },
+      { voiceConfigured: false },
+      { backendAuthReady: false },
+    ]) {
+      expect(shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, ...broken }, resolved)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("keeps a fresh machine in onboarding", () => {
+    expect(shouldAutoAcknowledgePairing(freshMachine, resolved)).toBe(false);
   });
 });
