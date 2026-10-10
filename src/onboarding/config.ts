@@ -134,9 +134,9 @@ export const backendOptions: SelectableOption<BackendChoice>[] = [
   {
     id: "openbase-cloud",
     label: "Openbase Cloud",
-    summary: "Managed Claude Code through Openbase Cloud.",
+    summary: "Claude Code through Openbase Cloud.",
     description:
-      "Starts with a generous Openbase Cloud free trial. Runs managed Claude Code through the Openbase Cloud proxy without a personal Anthropic account.",
+      "Starts with a generous Openbase Cloud free trial. Runs Claude Code through the Openbase Cloud proxy without a personal Anthropic account.",
   },
 ];
 
@@ -149,9 +149,9 @@ export const audioProviderOptions: SelectableOption<AudioProviderChoice>[] = [
   {
     id: "openbase-cloud",
     label: "Openbase Cloud",
-    summary: "Managed STT/TTS.",
+    summary: "Cloud STT/TTS.",
     description:
-      "Included with the Openbase Cloud trial. Uses managed speech-to-text and text-to-speech without third-party audio keys.",
+      "Included with the Openbase Cloud trial. Uses cloud speech-to-text and text-to-speech without third-party audio keys.",
   },
   {
     id: "cartesia",
@@ -165,7 +165,7 @@ export const audioProviderOptions: SelectableOption<AudioProviderChoice>[] = [
     label: "Local audio (Dev setup only)",
     summary: "Disabled in onboarding.",
     description:
-      "Local MLX Whisper and Kokoro currently require a developer-managed runtime and should not be used for first-run setup.",
+      "Local MLX Whisper and Kokoro currently require a developer runtime and should not be used for first-run setup.",
     disabledReason: "Dev setup only",
   },
 ];

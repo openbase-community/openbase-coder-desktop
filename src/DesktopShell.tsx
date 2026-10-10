@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   useCallback,
@@ -13,7 +13,6 @@ import { AppUpdateNotice } from "./AppUpdateNotice";
 import { identifyAnalyticsUser, productAnalytics, setAnalyticsUserId } from "./analytics";
 import openbaseWordmarkUrl from "../assets/openbase-logo-and-text.svg";
 import { DesktopControlNotice } from "./DesktopControlNotice";
-import { StatusIcon } from "./onboarding/components/StatusIcon";
 import {
   audioProviderOptions,
   CLOUD_STATE_POLL_INTERVAL_MS,
@@ -186,7 +185,6 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
     cloudStateError,
     flagsLoaded,
     forceOnboarding,
-    healthChecking,
     isCheckingPrerequisites,
     loginAttempts,
     loginStatus,
@@ -686,28 +684,6 @@ export default function DesktopShell({ children }: { children: ReactNode }) {
             />
             <span className="h-5 w-px bg-primary/15" aria-hidden />
             <p className="text-sm font-medium text-zinc-500">Setting up your Mac</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex h-9 items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium text-zinc-500">
-              {status === "checking" || healthChecking ? (
-                <PulsingDot />
-              ) : (
-                <StatusIcon ok={status === "ready"} />
-              )}
-              {backendStatusLabel}
-            </div>
-            <motion.button
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium text-zinc-500 disabled:opacity-40"
-              disabled={status === "checking" || healthChecking}
-              onClick={() => void checkHealth()}
-              transition={calmSpring}
-              type="button"
-              whileHover={{ y: -1 }}
-              whileTap={{ scale: 0.97 }}
-            >
-              <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-              Recheck
-            </motion.button>
           </div>
         </header>
 

@@ -1,4 +1,4 @@
-import { ArrowRight, Circle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { BreathingLogo, FadeUp } from "../motion";
@@ -15,8 +15,7 @@ export function WelcomePage({ onContinue }: { onContinue: () => void }) {
       <FadeUp delay={0.35}>
         <p className="mt-3 max-w-md text-center text-sm leading-6 text-slate-500">
           Let&apos;s set up voice coding on this Mac and link your phone —
-          with managed Openbase Cloud agents or your own Codex or Claude Code
-          CLI. Take your time — each step waits for you.
+          with Openbase Cloud agents or your own Codex or Claude Code CLI.
         </p>
       </FadeUp>
       <FadeUp delay={0.45}>
@@ -25,18 +24,6 @@ export function WelcomePage({ onContinue }: { onContinue: () => void }) {
             Let's get you set up
             <ArrowRight aria-hidden className="h-4 w-4" />
           </PrimaryButton>
-        </div>
-      </FadeUp>
-      <FadeUp delay={0.55}>
-        <div className="mt-10 flex max-w-lg flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          {["Install the CLI", "Choose your coding agent", "Run setup", "Sign in to Openbase", "Link your phone", "Pair privately"].map(
-            (item) => (
-              <div className="flex items-center gap-2 text-xs text-zinc-400" key={item}>
-                <Circle aria-hidden className="h-1.5 w-1.5 fill-zinc-300 text-zinc-300" />
-                {item}
-              </div>
-            ),
-          )}
         </div>
       </FadeUp>
     </section>

@@ -123,7 +123,7 @@ export function SetupPage({
       }
       support={
         setupBackend === NORMAL_ONBOARDING_BACKEND
-          ? "Openbase Cloud is the normal setup path: managed Claude Code and managed voice audio. Your Openbase account is the only sign-in you will need."
+          ? "Openbase Cloud is the normal setup path: Claude Code and voice audio through Openbase Cloud. Your Openbase account is the only sign-in you will need."
           : "Openbase will use your existing coding-agent subscription and manage voice audio. You will sign in once to Openbase and once to your selected coding agent."
       }
     >
