@@ -11,7 +11,7 @@ export function useLinuxTailscaleOnboarding(
 
   const connect = useCallback(async () => {
     if (installer?.platform !== "linux" || !installer.connectLinuxTailscale) {
-      setError("Managed Tailscale onboarding is unavailable on this machine.");
+      setError("Tailscale onboarding is unavailable on this machine.");
       return;
     }
 

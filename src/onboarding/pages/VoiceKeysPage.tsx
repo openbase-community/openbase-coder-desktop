@@ -54,7 +54,7 @@ export function VoiceKeysPage({
             ? "Provider-key audio uses AssemblyAI for speech-to-text and Cartesia for text-to-speech. Keys are written to the local Openbase env file and never displayed back."
             : selectedAudioProvider === "local"
               ? "Local audio uses MLX Whisper for speech-to-text and Kokoro for text-to-speech. Setup downloads the local models for this Mac."
-              : "Openbase Cloud audio is included with the Openbase Cloud trial. Managed speech-to-text and voice output work without third-party audio keys."
+              : "Openbase Cloud audio is included with the Openbase Cloud trial. Speech-to-text and voice output work without third-party audio keys."
       }
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

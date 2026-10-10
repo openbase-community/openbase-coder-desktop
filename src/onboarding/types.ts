@@ -138,12 +138,16 @@ export type SetupSteps = Record<string, { detail: string | null; status: SetupSt
 
 export type SetupProgressEvent =
   | { detail?: string | null; event: "step"; id: string; status: SetupStepStatus }
-  | {
-      cli_configured?: boolean;
-      event: "result";
-      ok: boolean;
-      tailscale_serve_healthy?: boolean;
-    };
+  | SetupResultEvent;
+
+export type SetupResultEvent = {
+  cli_configured?: boolean;
+  // Present when setup aborted: the error that stopped it.
+  error?: string | null;
+  event: "result";
+  ok: boolean;
+  tailscale_serve_healthy?: boolean;
+};
 
 export type InstallerEvent =
   | {

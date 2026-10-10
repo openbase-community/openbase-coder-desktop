@@ -7,6 +7,7 @@ import type {
   InstallerCommand,
   SelectableOption,
   SetupProgressEvent,
+  SetupResultEvent,
   TailnetExperience,
 } from "./types";
 
@@ -134,9 +135,9 @@ export const backendOptions: SelectableOption<BackendChoice>[] = [
   {
     id: "openbase-cloud",
     label: "Openbase Cloud",
-    summary: "Managed Claude Code through Openbase Cloud.",
+    summary: "Claude Code through Openbase Cloud.",
     description:
-      "Starts with a generous Openbase Cloud free trial. Runs managed Claude Code through the Openbase Cloud proxy without a personal Anthropic account.",
+      "Starts with a generous Openbase Cloud free trial. Runs Claude Code through the Openbase Cloud proxy without a personal Anthropic account.",
   },
 ];
 
@@ -149,9 +150,9 @@ export const audioProviderOptions: SelectableOption<AudioProviderChoice>[] = [
   {
     id: "openbase-cloud",
     label: "Openbase Cloud",
-    summary: "Managed STT/TTS.",
+    summary: "Cloud STT/TTS.",
     description:
-      "Included with the Openbase Cloud trial. Uses managed speech-to-text and text-to-speech without third-party audio keys.",
+      "Included with the Openbase Cloud trial. Uses cloud speech-to-text and text-to-speech without third-party audio keys.",
   },
   {
     id: "cartesia",
@@ -165,7 +166,7 @@ export const audioProviderOptions: SelectableOption<AudioProviderChoice>[] = [
     label: "Local audio (Dev setup only)",
     summary: "Disabled in onboarding.",
     description:
-      "Local MLX Whisper and Kokoro currently require a developer-managed runtime and should not be used for first-run setup.",
+      "Local MLX Whisper and Kokoro currently require a developer runtime and should not be used for first-run setup.",
     disabledReason: "Dev setup only",
   },
 ];
@@ -194,4 +195,21 @@ export function parseSetupProgressEvent(line: string): SetupProgressEvent | null
   }
   const event = parsed as SetupProgressEvent;
   return event.event === "step" || event.event === "result" ? event : null;
+}
+
+/**
+ * The error to show for a setup result, or null when setup succeeded. A
+ * private network that is not connected yet is not a setup failure: Openbase
+ * VPN and Openbase Direct connect at sign-in and pairing, after setup.
+ */
+export function setupResultError(result: SetupResultEvent): string | null {
+  if (!result.ok) {
+    return result.error
+      ? `Setup did not finish: ${result.error}`
+      : "Setup did not finish. See the failed step below.";
+  }
+  if (!result.cli_configured) {
+    return "Setup did not complete all required configuration.";
+  }
+  return null;
 }
