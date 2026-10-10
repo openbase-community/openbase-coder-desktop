@@ -11,6 +11,7 @@ import {
   NORMAL_ONBOARDING_BACKEND,
   resolveTailnetProvider,
   setupCommandText,
+  setupResultError,
 } from "./config";
 
 describe("onboarding setup defaults", () => {
@@ -72,5 +73,36 @@ describe("onboarding setup defaults", () => {
       bin: "codex",
       label: "codex login",
     });
+  });
+});
+
+describe("setup result errors", () => {
+  it("lets a fresh Openbase VPN install continue before the VPN connects", () => {
+    expect(
+      setupResultError({
+        cli_configured: true,
+        event: "result",
+        ok: true,
+        tailscale_serve_healthy: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("reports the error that stopped setup", () => {
+    expect(
+      setupResultError({
+        cli_configured: false,
+        error: "Services did not become ready: livekit-server",
+        event: "result",
+        ok: false,
+        tailscale_serve_healthy: false,
+      }),
+    ).toBe("Setup did not finish: Services did not become ready: livekit-server");
+  });
+
+  it("flags a run that finished without installing everything", () => {
+    expect(
+      setupResultError({ cli_configured: false, event: "result", ok: true }),
+    ).toBe("Setup did not complete all required configuration.");
   });
 });
