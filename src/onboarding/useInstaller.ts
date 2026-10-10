@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { commandLabel, MAX_TERMINAL_LINES, parseSetupProgressEvent } from "./config";
+import {
+  commandLabel,
+  MAX_TERMINAL_LINES,
+  parseSetupProgressEvent,
+  setupResultError,
+} from "./config";
 import type {
   InstallerApi,
   InstallerCommand,
@@ -95,17 +100,10 @@ export function useInstaller(
           }
           if (progressEvent.event === "result") {
             setupResultSeenRef.current = true;
-            const setupOk = Boolean(
-              progressEvent.ok &&
-                progressEvent.cli_configured,
-            );
-            setSetupCompleted(setupOk);
-            if (!setupOk) {
-              setCommandError(
-                progressEvent.tailscale_serve_healthy === false
-                  ? "Setup installed the local services. Sign in next, then finish connecting Openbase VPN or Openbase Direct during pairing."
-                  : "Setup did not complete all required configuration.",
-              );
+            const setupError = setupResultError(progressEvent);
+            setSetupCompleted(setupError === null);
+            if (setupError) {
+              setCommandError(setupError);
             }
           }
         }

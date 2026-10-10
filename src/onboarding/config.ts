@@ -7,6 +7,7 @@ import type {
   InstallerCommand,
   SelectableOption,
   SetupProgressEvent,
+  SetupResultEvent,
   TailnetExperience,
 } from "./types";
 
@@ -194,4 +195,21 @@ export function parseSetupProgressEvent(line: string): SetupProgressEvent | null
   }
   const event = parsed as SetupProgressEvent;
   return event.event === "step" || event.event === "result" ? event : null;
+}
+
+/**
+ * The error to show for a setup result, or null when setup succeeded. A
+ * private network that is not connected yet is not a setup failure: Openbase
+ * VPN and Openbase Direct connect at sign-in and pairing, after setup.
+ */
+export function setupResultError(result: SetupResultEvent): string | null {
+  if (!result.ok) {
+    return result.error
+      ? `Setup did not finish: ${result.error}`
+      : "Setup did not finish. See the failed step below.";
+  }
+  if (!result.cli_configured) {
+    return "Setup did not complete all required configuration.";
+  }
+  return null;
 }
