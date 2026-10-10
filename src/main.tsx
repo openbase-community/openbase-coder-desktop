@@ -6,6 +6,7 @@ import {
   configureProductAnalytics,
   configureProductAnalyticsPreference,
 } from "@openbase/coder-react/product-analytics";
+import { installWindowActivityAttribute } from "@openbase/coder-react/window-activity";
 import "@openbase/coder-react/index.css";
 import DesktopShell from "./DesktopShell";
 import {
@@ -21,6 +22,8 @@ window.__OPENBASE_RUNTIME_CONFIG__ ??= {
 };
 
 document.documentElement.dataset.openbaseRuntime = "electron";
+// Pause CSS animations while the window is unfocused or hidden.
+installWindowActivityAttribute();
 configureProductAnalytics(productAnalytics);
 configureProductAnalyticsPreference({
   isEnabled: isProductAnalyticsEnabled,

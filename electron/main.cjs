@@ -1438,15 +1438,19 @@ function createWindow() {
         }
       : {}),
     // Vibrancy stays for the packaged app because onboarding renders on a
-    // transparent background.
+    // transparent background. "followWindow" (not "active") lets macOS stop
+    // re-blurring the backdrop while the window is inactive; a forced-active
+    // blur kept WindowServer busy on an otherwise idle app.
     ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           vibrancy: "under-window",
-          visualEffectState: "active",
+          visualEffectState: "followWindow",
         }
       : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
+      // Explicit: throttle timers and rendering while the window is hidden.
+      backgroundThrottling: true,
       contextIsolation: true,
       nodeIntegration: false,
       additionalArguments: [

@@ -161,6 +161,34 @@ export function deriveOnboardingComplete(facts: OnboardingFacts): boolean {
 }
 
 /**
+ * Whether a live, working pair proves pairing even though the durable
+ * acknowledgement flag is missing. Machines paired outside the desktop
+ * wizard (CLI or agent setup, a phone that paired on its own, a wiped or
+ * never-written ~/.openbase/desktop-onboarding.json) never clicked Continue
+ * on the Pairing step, so without this they reopen on Welcome forever.
+ *
+ * Only resolved facts count: the CLI status and cloud pairing state must
+ * have answered (their pending defaults are optimistic or pessimistic, not
+ * real) and the private-network pair must be healthy (cloud reports both
+ * devices paired, routes healthy, backend and voice ready).
+ *
+ * Phone recency is deliberately NOT required: a working phone talks to this
+ * backend directly and may not refresh its cloud last_seen for hours (VM2,
+ * 2026-10-10). The stale-phone-row guard instead rests on setup: a machine
+ * that ran setup in this session is a fresh (re)install going through the
+ * wizard, so it keeps the QR and the explicit Continue.
+ */
+export function shouldAutoAcknowledgePairing(
+  facts: OnboardingFacts,
+  probes: Pick<LaunchProbes, "cliStatusResolved" | "cloudStateResolved" | "flagsLoaded">,
+): boolean {
+  if (!probes.flagsLoaded || facts.pairingAcknowledged) return false;
+  if (!probes.cliStatusResolved || !probes.cloudStateResolved) return false;
+  if (!facts.tailscalePaired || facts.setupSucceeded) return false;
+  return deriveOnboardingComplete({ ...facts, pairingAcknowledged: true });
+}
+
+/**
  * Launch-time fact sources, each true once its first fetch has settled
  * (successfully or not). While a source is unresolved, its facts still hold
  * their pessimistic defaults, which must not be mistaken for a real "not
