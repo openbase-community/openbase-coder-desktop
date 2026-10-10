@@ -460,8 +460,15 @@ describe("deriveOnboardingPageStates", () => {
 describe("shouldAutoAcknowledgePairing", () => {
   const resolved = { cliStatusResolved: true, cloudStateResolved: true, flagsLoaded: true };
   // A machine paired outside the wizard: everything works, but the durable
-  // flag was never written and this session never saw the welcome page.
-  const pairedWithoutFlag = facts({ pairingAcknowledged: false, welcomeAcknowledged: false });
+  // flag was never written, this session never saw the welcome page, setup
+  // did not run in this session, and the phone's cloud last_seen is stale
+  // (it talks to the backend directly), as on VM2 on 2026-10-10.
+  const pairedWithoutFlag = facts({
+    mobileRecentlyActive: false,
+    pairingAcknowledged: false,
+    setupSucceeded: false,
+    welcomeAcknowledged: false,
+  });
 
   it("acknowledges a live, healthy pair whose flag was never written", () => {
     expect(deriveOnboardingStep(pairedWithoutFlag)).toBe("welcome");
@@ -483,12 +490,15 @@ describe("shouldAutoAcknowledgePairing", () => {
     }
   });
 
-  it("requires the pair to be live: healthy network and a recent phone", () => {
+  it("requires the pair to be live and healthy", () => {
     expect(
       shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, tailscalePaired: false }, resolved),
     ).toBe(false);
+  });
+
+  it("leaves a wizard (re)install that ran setup this session to the explicit Continue", () => {
     expect(
-      shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, mobileRecentlyActive: false }, resolved),
+      shouldAutoAcknowledgePairing({ ...pairedWithoutFlag, setupSucceeded: true }, resolved),
     ).toBe(false);
   });
 

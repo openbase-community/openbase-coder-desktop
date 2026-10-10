@@ -169,8 +169,14 @@ export function deriveOnboardingComplete(facts: OnboardingFacts): boolean {
  *
  * Only resolved facts count: the CLI status and cloud pairing state must
  * have answered (their pending defaults are optimistic or pessimistic, not
- * real), the private-network pair must be healthy, and a phone must have
- * checked in recently.
+ * real) and the private-network pair must be healthy (cloud reports both
+ * devices paired, routes healthy, backend and voice ready).
+ *
+ * Phone recency is deliberately NOT required: a working phone talks to this
+ * backend directly and may not refresh its cloud last_seen for hours (VM2,
+ * 2026-10-10). The stale-phone-row guard instead rests on setup: a machine
+ * that ran setup in this session is a fresh (re)install going through the
+ * wizard, so it keeps the QR and the explicit Continue.
  */
 export function shouldAutoAcknowledgePairing(
   facts: OnboardingFacts,
@@ -178,7 +184,7 @@ export function shouldAutoAcknowledgePairing(
 ): boolean {
   if (!probes.flagsLoaded || facts.pairingAcknowledged) return false;
   if (!probes.cliStatusResolved || !probes.cloudStateResolved) return false;
-  if (!facts.tailscalePaired || !facts.mobileRecentlyActive) return false;
+  if (!facts.tailscalePaired || facts.setupSucceeded) return false;
   return deriveOnboardingComplete({ ...facts, pairingAcknowledged: true });
 }
 
