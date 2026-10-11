@@ -18,6 +18,7 @@
 import SwiftUI
 #if os(macOS)
 import AppKit
+import ApplicationServices
 #endif
 
 // This class contains the logic to control behavior of the whole app.
@@ -227,6 +228,35 @@ final class RoomContext: ObservableObject {
     }
 
     #if os(macOS)
+    /// Errors the companion reports with a stable `code`, so Electron, the
+    /// local API and the phone apps can show one plain message for them.
+    struct CompanionCodedError: LocalizedError {
+        static let screenRecordingCode = "screen_recording_permission_required"
+        static let screenRecordingDetail =
+            "Allow Screen Recording for OpenbaseScreenShareCompanion on the Mac (System Settings > Privacy & Security > Screen & System Audio Recording), then try again."
+
+        let code: String
+        let detail: String
+        var errorDescription: String? { detail }
+
+        static var screenRecording: CompanionCodedError {
+            CompanionCodedError(code: screenRecordingCode, detail: screenRecordingDetail)
+        }
+
+        /// ScreenCaptureKit reports a missing grant as a TCC "declined" error
+        /// (SCStreamErrorUserDeclined, -3801) even when preflight passed.
+        static func coded(_ error: Error) -> CompanionCodedError? {
+            if let coded = error as? CompanionCodedError { return coded }
+            let nsError = error as NSError
+            if (nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" && nsError.code == -3801)
+                || nsError.localizedDescription.contains("declined TCC")
+            {
+                return .screenRecording
+            }
+            return nil
+        }
+    }
+
     /// Screen share must never starve voice: coding screens compress well at
     /// low fps, and the low bitrate/network priorities let WebRTC's pacer
     /// favor the audio that STT depends on when uplink gets tight.
@@ -244,6 +274,17 @@ final class RoomContext: ObservableObject {
     }
 
     weak var screenShareTrack: LocalTrackPublication?
+    private var hasRequestedScreenRecording = false
+    /// Seconds a share may run with no human viewer in the room (the phone
+    /// hung up, backgrounded, or lost its connection) before it is ended.
+    static let viewerlessGraceSeconds: UInt64 = 10
+    static let companionIdentity = "openbase-screen-share-companion"
+    private var viewerWatchdogTask: Task<Void, Never>?
+    private var isEndingShare = false
+    /// Called after the companion ends a share on its own (viewer stop
+    /// message, no viewers left, room disconnected) with the reason.
+    var onShareEnded: ((String) -> Void)?
+    private(set) var shouldExitAfterPermissionFailure = false
     private var computerUseTask: Task<Void, Never>?
     private var computerUseSteering: OpenAIComputerUseSteering?
     private var launchedChromeProcess: Process?
@@ -287,6 +328,26 @@ final class RoomContext: ObservableObject {
     func startCompanionDisplayShare(roomUrl: String, token companionToken: String) async throws {
         print("[livekit-companion-swift] livekit-connect starting roomUrl=\(roomUrl) tokenPresent=\(!companionToken.isEmpty)")
 
+        // Check Screen Recording before joining so a missing grant never
+        // leaves a silent, video-less participant in the call. The request
+        // shows macOS's prompt the first time; the grant only takes effect
+        // in a fresh process, which Electron relaunches on the next attempt.
+        guard CGPreflightScreenCaptureAccess() else {
+            print("[livekit-companion-swift] screen-share blocked: Screen Recording permission is not granted; requesting it")
+            if hasRequestedScreenRecording {
+                // A grant made since the first request only applies to a new
+                // process; quit after answering so the next start relaunches.
+                shouldExitAfterPermissionFailure = true
+            }
+            hasRequestedScreenRecording = true
+            _ = CGRequestScreenCaptureAccess()
+            throw CompanionCodedError.screenRecording
+        }
+
+        remoteControlInput.statusReporter = { [weak self] payload, identity in
+            self?.publishControlStatus(payload, to: identity)
+        }
+
         if room.localParticipant.isScreenShareEnabled() {
             try await setScreenShareMacOS(isEnabled: false)
         }
@@ -322,11 +383,70 @@ final class RoomContext: ObservableObject {
             options: Self.screenSharePublishOptions()
         )
         print("[livekit-companion-swift] screen-share publish ok source=main-display displayID=\(display.displayID)")
+        evaluateViewerPresence()
+    }
+
+    // MARK: - Share lifetime
+
+    /// True while a human (non-agent) participant other than this companion
+    /// is in the room to watch the share.
+    private func hasViewers() -> Bool {
+        room.remoteParticipants.values.contains { participant in
+            participant.kind != .agent && participant.identity?.stringValue != Self.companionIdentity
+        }
+    }
+
+    /// Arms or cancels the no-viewer timeout. A share nobody is watching is
+    /// ended so capture and remote input never outlive the viewer.
+    func evaluateViewerPresence() {
+        guard isCompanionScreenShareActive() else {
+            viewerWatchdogTask?.cancel()
+            viewerWatchdogTask = nil
+            return
+        }
+        if hasViewers() {
+            if viewerWatchdogTask != nil {
+                print("[livekit-companion-swift] viewer present again; share timeout cancelled")
+            }
+            viewerWatchdogTask?.cancel()
+            viewerWatchdogTask = nil
+            return
+        }
+        guard viewerWatchdogTask == nil else { return }
+        print("[livekit-companion-swift] no viewers in room; ending share in \(Self.viewerlessGraceSeconds)s unless one returns")
+        viewerWatchdogTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.viewerlessGraceSeconds * 1_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.viewerWatchdogTask = nil
+            guard self.isCompanionScreenShareActive(), !self.hasViewers() else { return }
+            await self.endShare(reason: "no_viewers")
+        }
+    }
+
+    /// Ends the share from the companion side: stops capture, tears down
+    /// remote input and leaves the room, then tells the command server.
+    func endShare(reason: String) async {
+        guard !isEndingShare else { return }
+        isEndingShare = true
+        defer { isEndingShare = false }
+        viewerWatchdogTask?.cancel()
+        viewerWatchdogTask = nil
+        print("[livekit-companion-swift] ending share reason=\(reason)")
+        do {
+            try await stopCompanionScreenShare()
+        } catch {
+            print("[livekit-companion-swift] end-share cleanup error=\(error.localizedDescription)")
+            remoteControlInput.disable()
+            screenShareTrack = nil
+        }
+        onShareEnded?(reason)
     }
 
     @available(macOS 12.3, *)
     func stopCompanionScreenShare(cancelComputerUse: Bool = true) async throws {
         print("[livekit-companion-swift] screen-share unpublish starting")
+        viewerWatchdogTask?.cancel()
+        viewerWatchdogTask = nil
         remoteControlInput.disable()
         if cancelComputerUse {
             computerUseTask?.cancel()
@@ -338,6 +458,29 @@ final class RoomContext: ObservableObject {
         }
         await disconnect()
         print("[livekit-companion-swift] screen-share unpublish ok")
+    }
+
+    /// Publishes a companion status payload (for example remote-control
+    /// permission state) as a reliable LiveKit data message.
+    func publishControlStatus(_ payload: [String: Any], to identity: String?) {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        let destinations = identity.map { [Participant.Identity(from: $0)] } ?? []
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await room.localParticipant.publish(
+                    data: data,
+                    options: DataPublishOptions(destinationIdentities: destinations, reliable: true)
+                )
+            } catch {
+                print("[livekit-companion-swift] control-status publish failed error=\(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Current macOS privacy grants, reported by `/status`.
+    nonisolated static func permissionStatus() -> (screenRecording: Bool, accessibility: Bool) {
+        (CGPreflightScreenCaptureAccess(), AXIsProcessTrusted())
     }
 
     @available(macOS 12.3, *)
@@ -979,6 +1122,19 @@ extension RoomContext: RoomDelegate {
     nonisolated func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldValue: ConnectionState) {
         print("Did update connectionState \(oldValue) -> \(connectionState)")
 
+        #if os(macOS)
+        if case .disconnected = connectionState {
+            // The server closed the room (call ended) or the link dropped for
+            // good: make sure capture and remote input stop with it.
+            Task { @MainActor [weak self] in
+                guard let self, !self.isEndingShare, self.screenShareTrack != nil else { return }
+                if #available(macOS 12.3, *) {
+                    await self.endShare(reason: "room_disconnected")
+                }
+            }
+        }
+        #endif
+
         if case .disconnected = connectionState,
            let error = room.disconnectError,
            error.type != .cancelled
@@ -1004,7 +1160,23 @@ extension RoomContext: RoomDelegate {
             if let focusParticipant, focusParticipant.identity == participant.identity {
                 self.focusParticipant = nil
             }
+            #if os(macOS)
+            if #available(macOS 12.3, *) {
+                self.evaluateViewerPresence()
+            }
+            #endif
         }
+    }
+
+    nonisolated func room(_: Room, participantDidConnect _: RemoteParticipant) {
+        #if os(macOS)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if #available(macOS 12.3, *) {
+                self.evaluateViewerPresence()
+            }
+        }
+        #endif
     }
 
     nonisolated func room(_: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic _: String, encryptionType _: EncryptionType) {
@@ -1022,6 +1194,25 @@ extension RoomContext: RoomDelegate {
             }
             return
         }
+
+        #if os(macOS)
+        if let stopMessage = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           stopMessage["type"] as? String == "openbase.screen_share.stop",
+           let participant, participant.kind != .agent
+        {
+            // A viewer's Stop ends the share on this computer, not just on
+            // the viewer's screen.
+            let senderIdentity = participant.identity?.stringValue ?? "unknown"
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                print("[livekit-companion-swift] stop requested by viewer=\(senderIdentity)")
+                if #available(macOS 12.3, *) {
+                    await self.endShare(reason: "viewer_stop")
+                }
+            }
+            return
+        }
+        #endif
 
         if let remoteControlMessage = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = remoteControlMessage["type"] as? String,

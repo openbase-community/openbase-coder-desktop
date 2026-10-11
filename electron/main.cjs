@@ -1058,8 +1058,8 @@ trustedHandle("openbase:livekit-companion:start-screen-share", async (_event, se
   try {
     return await liveKitCompanion.startScreenShare(session);
   } catch (error) {
-    mainLogger.error("livekit-companion-start-error", { message: error.message });
-    return { ok: false, state: "error", error: error.message };
+    mainLogger.error("livekit-companion-start-error", { message: error.message, code: error.code });
+    return { ok: false, state: "error", error: error.message, code: error.code };
   }
 });
 

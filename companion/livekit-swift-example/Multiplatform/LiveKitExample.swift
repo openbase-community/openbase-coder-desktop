@@ -165,8 +165,13 @@ private final class CompanionCommandServer: @unchecked Sendable {
         return created
     }
 
-    init(roomContext: RoomContext) {
+    @MainActor init(roomContext: RoomContext) {
         self.roomContext = roomContext
+        roomContext.onShareEnded = { [weak self] reason in
+            guard let self else { return }
+            print("[livekit-companion-swift] share ended by companion reason=\(reason)")
+            self.state = "off"
+        }
     }
 
     func startFromCommandLine() {
@@ -253,7 +258,13 @@ private final class CompanionCommandServer: @unchecked Sendable {
         print("[livekit-companion-swift] ipc-request method=\(request.method) path=\(request.path)")
 
         if request.method == "GET", request.path == "/status" {
-            send(connection: connection, statusCode: 200, body: Response(ok: true, state: state, error: nil))
+            let permissions = RoomContext.permissionStatus()
+            send(connection: connection, statusCode: 200, payload: StatusResponse(
+                ok: true,
+                state: state,
+                screenRecordingGranted: permissions.screenRecording,
+                accessibilityGranted: permissions.accessibility
+            ))
             return
         }
 
@@ -351,6 +362,16 @@ private final class CompanionCommandServer: @unchecked Sendable {
                 } catch {
                     self.state = "error"
                     print("[livekit-companion-swift] start-screen-share failed error=\(error.localizedDescription)")
+                    if let coded = RoomContext.CompanionCodedError.coded(error) {
+                        // Leave the room: a participant without video only confuses viewers.
+                        try? await self.roomContext.stopCompanionScreenShare()
+                        self.send(connection: connection, statusCode: 403, body: Response(ok: false, state: self.state, error: coded.detail, code: coded.code))
+                        if self.roomContext.shouldExitAfterPermissionFailure {
+                            print("[livekit-companion-swift] exiting so a relaunch picks up the Screen Recording grant")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) }
+                        }
+                        return
+                    }
                     self.send(connection: connection, statusCode: 500, body: Response(ok: false, state: self.state, error: error.localizedDescription))
                 }
             }
@@ -716,6 +737,14 @@ private final class CompanionCommandServer: @unchecked Sendable {
         let ok: Bool
         let state: String
         let error: String?
+        var code: String? = nil
+    }
+
+    private struct StatusResponse: Encodable {
+        let ok: Bool
+        let state: String
+        let screenRecordingGranted: Bool
+        let accessibilityGranted: Bool
     }
 
     private struct ScreenshotResponse: Encodable {
