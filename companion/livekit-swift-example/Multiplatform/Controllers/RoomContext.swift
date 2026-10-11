@@ -243,14 +243,12 @@ final class RoomContext: ObservableObject {
             CompanionCodedError(code: screenRecordingCode, detail: screenRecordingDetail)
         }
 
-        /// ScreenCaptureKit reports a missing grant as a TCC "declined" error
-        /// (SCStreamErrorUserDeclined, -3801) even when preflight passed.
+        /// ScreenCaptureKit reports a missing grant as SCStreamErrorUserDeclined
+        /// (-3801) even when preflight passed.
         static func coded(_ error: Error) -> CompanionCodedError? {
             if let coded = error as? CompanionCodedError { return coded }
             let nsError = error as NSError
-            if (nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" && nsError.code == -3801)
-                || nsError.localizedDescription.contains("declined TCC")
-            {
+            if nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain", nsError.code == -3801 {
                 return .screenRecording
             }
             return nil
