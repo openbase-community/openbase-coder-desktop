@@ -1,7 +1,7 @@
 {
   "name": "@openbase/coder-desktop",
   "private": true,
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Desktop app for Openbase",
   "author": "Openbase",
   "type": "module",
