@@ -145,6 +145,10 @@ function installerEnv() {
   return {
     ...process.env,
     PATH: [...new Set(pathParts)].join(path.delimiter),
+    // Tells the CLI the app (and its openbase:// handler) is present, so the
+    // `login` "You're signed in" page reopens the app instead of only pointing
+    // back to a terminal.
+    OPENBASE_LAUNCHED_BY_DESKTOP: "1",
   };
 }
 
