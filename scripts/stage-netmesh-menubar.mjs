@@ -20,6 +20,7 @@ import { captureNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
 import { downloadNativeBundle } from "./native-bundle-staging.mjs";
 import {
   assertSupportedNetmeshBuild,
+  configuredWebBackendUrl,
   resolveNetmeshPrebuiltPrefix,
 } from "./netmesh-prebuilt-contract.mjs";
 
@@ -36,7 +37,7 @@ const packageVersion = JSON.parse(
 const releasePrefix = resolveNetmeshPrebuiltPrefix(
   packageVersion,
   process.env.OPENBASE_CODER_RELEASE_PREFIX,
-  process.env.OPENBASE_CODER_CLI_WEB_BACKEND_URL,
+  configuredWebBackendUrl(),
 );
 const MENUBAR_ZIP_NAME = "OpenbaseNetmesh-latest-arm64.zip";
 const prebuiltMenuBarUrl =
