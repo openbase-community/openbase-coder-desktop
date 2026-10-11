@@ -140,6 +140,8 @@ if (baseOs === "mac") {
   const netmeshArtifacts = [
     { appName: "OpenbaseNetmeshCompanion.app", label: "netmesh companion", zipName: "OpenbaseNetmeshCompanion-latest-arm64.zip" },
     { appName: "OpenbaseNetmesh.app", label: "netmesh menu-bar app", zipName: "OpenbaseNetmesh-latest-arm64.zip" },
+    // Screen-share capture companion, for checkouts without Xcode (stage-mac-companion.mjs).
+    { appName: "OpenbaseScreenShareCompanion.app", label: "screen-share companion", zipName: "OpenbaseScreenShareCompanion-latest-arm64.zip" },
   ];
   for (const { appName, label, zipName } of netmeshArtifacts) {
     const stagedApp = path.join(repoRoot, "companion-build", appName);
