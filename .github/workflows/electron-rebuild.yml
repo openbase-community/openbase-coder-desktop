@@ -73,7 +73,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Mirrors the workspace .nvmrc (not checked out at a matching ref here).
+          node-version: "24.18.0"
 
       - name: Set up pnpm
         run: |
@@ -280,7 +281,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Mirrors the workspace .nvmrc (not checked out at a matching ref here).
+          node-version: "24.18.0"
 
       - name: Set up Go
         uses: actions/setup-go@v5
