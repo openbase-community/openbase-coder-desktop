@@ -70,11 +70,18 @@ const netmeshDir = netmeshDirCandidates.find((candidate) =>
 
 if (!netmeshDir) {
   if (existsSync(stagedAppPath)) {
-    verifyStagedCompanion();
-    console.log(
+    // A kept prebuilt that no longer meets the minimum build (the contract
+    // moved on under it) is replaced by a fresh download rather than failing,
+    // so re-running this step is the fix the freshness check can recommend.
+    try {
+      verifyStagedCompanion();
+      console.log(
       `[stage-netmesh-companion] keeping prebuilt companion at ${stagedAppPath}`,
-    );
-    process.exit(0);
+      );
+      process.exit(0);
+    } catch (error) {
+      console.warn(`[stage-netmesh-companion] replacing staged prebuilt: ${error.message}`);
+    }
   }
   downloadPrebuiltCompanion();
   process.exit(0);
