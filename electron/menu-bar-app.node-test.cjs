@@ -5,7 +5,20 @@ const {
   findMenuBarApp,
   isExpectedCodeSignatureOutput,
   menuBarAppCandidates,
+  mappedMenuBarExecutableMatches,
 } = require("./menu-bar-app.cjs");
+
+test("mapped identity detects a replaced bundle even with the same original command path", () => {
+  const output = "p42\nftxt\nD0x100000b\ni707047\nn/tmp/ShipIt/Openbase.app/Contents/Resources/OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh\nftxt\nD0x100000b\ni951555\nn/System/another-file\n";
+  assert.equal(mappedMenuBarExecutableMatches(output, { dev: 0x100000bn, ino: 707047n }), true);
+  assert.equal(mappedMenuBarExecutableMatches(output, { dev: 0x100000bn, ino: 951555n }), false);
+  assert.equal(mappedMenuBarExecutableMatches(output, { dev: 0x200000bn, ino: 707047n }), false);
+});
+
+test("missing or malformed executable identity is inconclusive", () => {
+  assert.equal(mappedMenuBarExecutableMatches("p42\nftxt\nn/other", { dev: 1n, ino: 2n }), null);
+  assert.equal(mappedMenuBarExecutableMatches("ftxt\nDbad\ni2\nn/OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh", { dev: 1n, ino: 2n }), null);
+});
 
 const packagedDevOptions = {
   electronDir: "/Applications/Openbase.app/Contents/Resources/app.asar/electron",

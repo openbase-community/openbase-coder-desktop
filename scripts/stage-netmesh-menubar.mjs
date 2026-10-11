@@ -11,14 +11,16 @@
 // boundary that lets the Electron app sources be public while netmesh stays
 // closed — public contributors build the whole app from the downloaded
 // artifact.
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { signAppBundle, signExecutable } from "./macos-code-signing.mjs";
 import { captureNativeBuild, stageNativeBuild } from "./native-provenance.mjs";
+import { downloadNativeBundle } from "./native-bundle-staging.mjs";
 import {
   assertSupportedNetmeshBuild,
+  configuredWebBackendUrl,
   resolveNetmeshPrebuiltPrefix,
 } from "./netmesh-prebuilt-contract.mjs";
 
@@ -35,15 +37,15 @@ const packageVersion = JSON.parse(
 const releasePrefix = resolveNetmeshPrebuiltPrefix(
   packageVersion,
   process.env.OPENBASE_CODER_RELEASE_PREFIX,
-  process.env.OPENBASE_CODER_CLI_WEB_BACKEND_URL,
+  configuredWebBackendUrl(),
 );
 const MENUBAR_ZIP_NAME = "OpenbaseNetmesh-latest-arm64.zip";
 const prebuiltMenuBarUrl =
   process.env.OPENBASE_NETMESH_MENUBAR_URL ??
   `https://openbase-coder-desktop-releases-632795836081-us-east-1.s3.amazonaws.com/${releasePrefix}/${MENUBAR_ZIP_NAME}`;
 
-function verifyStagedMenuBar() {
-  const infoPlist = path.join(stagedAppPath, "Contents", "Info.plist");
+function verifyStagedMenuBar(app = stagedAppPath) {
+  const infoPlist = path.join(app, "Contents", "Info.plist");
   const build = execFileSync(
     "/usr/libexec/PlistBuddy",
     ["-c", "Print :CFBundleVersion", infoPlist],
@@ -53,26 +55,8 @@ function verifyStagedMenuBar() {
 }
 
 function downloadPrebuiltMenuBarApp() {
-  const zipPath = path.join(stagedRoot, MENUBAR_ZIP_NAME);
-  mkdirSync(stagedRoot, { recursive: true });
-  console.log(
-    `[stage-netmesh-menubar] downloading prebuilt menu-bar app from ${prebuiltMenuBarUrl}`,
-  );
-  execFileSync("curl", ["-fL", "--retry", "3", "-o", zipPath, prebuiltMenuBarUrl], {
-    stdio: "inherit",
-  });
-  rmSync(stagedAppPath, { force: true, recursive: true });
-  // ditto preserves the code signature and extended attributes; unzip may not.
-  execFileSync("ditto", ["-x", "-k", zipPath, stagedRoot], { stdio: "inherit" });
-  rmSync(zipPath, { force: true });
-  if (!existsSync(stagedAppPath)) {
-    throw new Error(
-      `[stage-netmesh-menubar] ${MENUBAR_ZIP_NAME} did not contain OpenbaseNetmesh.app`,
-    );
-  }
-  verifyStagedMenuBar();
-  execFileSync("codesign", ["--verify", "--deep", stagedAppPath], { stdio: "inherit" });
-  console.log(`[stage-netmesh-menubar] staged prebuilt ${stagedAppPath}`);
+  downloadNativeBundle(stagedAppPath, prebuiltMenuBarUrl, MENUBAR_ZIP_NAME, verifyStagedMenuBar);
+  console.log(`[stage-netmesh] staged prebuilt ${stagedAppPath}`);
 }
 
 const netmeshDirCandidates = [
@@ -88,17 +72,25 @@ const netmeshDir = netmeshDirCandidates.find((candidate) =>
 
 if (!netmeshDir) {
   if (existsSync(stagedAppPath)) {
-    verifyStagedMenuBar();
-    console.log(
+    // A kept prebuilt that no longer meets the minimum build (the contract
+    // moved on under it) is replaced by a fresh download rather than failing,
+    // so re-running this step is the fix the freshness check can recommend.
+    try {
+      verifyStagedMenuBar();
+      console.log(
       `[stage-netmesh-menubar] keeping prebuilt menu-bar app at ${stagedAppPath}`,
-    );
-    process.exit(0);
+      );
+      process.exit(0);
+    } catch (error) {
+      console.warn(`[stage-netmesh-menubar] replacing staged prebuilt: ${error.message}`);
+    }
   }
   downloadPrebuiltMenuBarApp();
   process.exit(0);
 }
 
-const derivedDataPath = path.join(stagedRoot, "netmesh-menubar-derivedData");
+mkdirSync(stagedRoot, { recursive: true });
+const derivedDataPath = mkdtempSync(path.join(stagedRoot, ".netmesh-menubar-derivedData-"));
 const builtAppPath = path.join(
   derivedDataPath,
   "Build",
@@ -157,6 +149,5 @@ stageNativeBuild(builtAppPath, stagedAppPath, path.dirname(repoRoot), netmeshDir
     signExecutable(path.join(app, "Contents/MacOS", name), `embedded ${name}`);
   }
   signAppBundle(app, "macOS Netmesh menu-bar app");
-});
-verifyStagedMenuBar();
+}, verifyStagedMenuBar);
 console.log(`[stage-netmesh-menubar] staged ${stagedAppPath}`);

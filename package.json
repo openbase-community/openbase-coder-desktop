@@ -1,10 +1,13 @@
 {
   "name": "@openbase/coder-desktop",
   "private": true,
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Desktop app for Openbase",
   "author": "Openbase",
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev:renderer": "vite --host --port 8081",
     "dev:electron": "wait-on tcp:8081 && OPENBASE_CODER_DESKTOP_RENDERER_URL=http://127.0.0.1:8081 electron .",
@@ -35,7 +38,7 @@
     "test:coverage": "vitest --coverage",
     "generate-types": "npx openapi-typescript http://localhost/api/schema -o ./src/types/models.d.ts --root-types --root-types-no-schema-prefix",
     "install:local": "pnpm run release:clean && pnpm run icons:generate && pnpm run build && electron-builder --mac --arm64 --publish never -c.extraResources=[] -c.extraMetadata.openbaseDevBuild=true && node scripts/install-local.mjs",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath >/dev/null || git config core.hooksPath .githooks"
   },
   "main": "electron/main.cjs",
   "build": {

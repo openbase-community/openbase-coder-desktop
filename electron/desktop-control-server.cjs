@@ -151,7 +151,13 @@ async function handleControlRequest({
 
     sendJson(response, 404, { ok: false, error: "Unknown desktop control route" });
   } catch (error) {
-    sendJson(response, 500, { ok: false, error: error.message || String(error) });
+    const payload = { ok: false, error: error.message || String(error) };
+    if (typeof error.code === "string" && error.code.endsWith("_permission_required")) {
+      payload.code = error.code;
+      sendJson(response, 403, payload);
+      return;
+    }
+    sendJson(response, 500, payload);
   }
 }
 

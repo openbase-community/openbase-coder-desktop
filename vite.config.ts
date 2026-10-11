@@ -4,7 +4,7 @@ import path from "path";
 import { defineConfig } from "vite";
 
 const require = createRequire(import.meta.url);
-const { provenancePlugin } = require("../coder-react/build/runtime-provenance.cjs");
+const { provenancePlugin } = require("../coder-react/scripts/runtime-provenance.cjs");
 
 const sharedSrc = path.resolve(
   __dirname,

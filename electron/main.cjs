@@ -18,11 +18,12 @@ const {
   runLinuxTailscalePostConnect,
 } = require("./linux-tailscale-onboarding.cjs");
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
-const { isExpectedCodeSignatureOutput, menuBarAppCandidates } = require("./menu-bar-app.cjs");
+const { isExpectedCodeSignatureOutput, menuBarAppCandidates, mappedMenuBarExecutableMatches } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
+const { copyPackage, repairSeedSymlinks } = require("./standalone-package-copy.cjs");
 const {
   COMPANION_LOG_PATH,
   LOG_DIR,
@@ -57,16 +58,22 @@ app.setName("Openbase");
 const rendererUrl = process.env.OPENBASE_CODER_DESKTOP_RENDERER_URL;
 const backendBaseUrl =
   process.env.OPENBASE_CODER_DESKTOP_BACKEND_URL || RUNTIME_DEFAULTS.backendBaseUrl;
-let activeInstallation = null;
-try {
-  activeInstallation = JSON.parse(
-    fs.readFileSync(path.join(os.homedir(), ".openbase", "installation.json"), "utf8"),
-  );
-} catch {
-  // First production launch has no installation yet; onboarding stays enabled.
+function readActiveInstallation() {
+  try {
+    const installation = JSON.parse(
+      fs.readFileSync(path.join(os.homedir(), ".openbase", "installation.json"), "utf8"),
+    );
+    return typeof installation?.standalone === "boolean" ? installation : { standalone: false };
+  } catch (error) {
+    // First production launch has no installation. Unreadable install mode
+    // must not enable release installation over a developer workspace.
+    return error.code === "ENOENT" ? null : { standalone: false };
+  }
 }
+const activeInstallation = readActiveInstallation();
 const developerDashboardOnly = isDeveloperDashboardOnly({
   appPackaged: app.isPackaged,
+  appDevBuild: APP_PACKAGE.openbaseDevBuild,
   // The /Applications launcher stub starts Electron through `open -a`, which
   // cannot pass environment variables — accept the argv form too.
   envValue: process.argv.includes("--openbase-dev-dashboard")
@@ -74,6 +81,9 @@ const developerDashboardOnly = isDeveloperDashboardOnly({
     : process.env.OPENBASE_DESKTOP_DEV_DASHBOARD_ONLY,
   installation: activeInstallation,
 });
+function isDeveloperInstallation() {
+  return developerDashboardOnly || readActiveInstallation()?.standalone === false;
+}
 const appIconPath = path.join(__dirname, "..", "assets", "openbase-coder-icon.png");
 const mainLogger = installConsoleFileLogger("electron-main", MAIN_LOG_PATH);
 const rendererLogger = createFileLogger("electron-renderer", RENDERER_LOG_PATH);
@@ -135,6 +145,10 @@ function installerEnv() {
   return {
     ...process.env,
     PATH: [...new Set(pathParts)].join(path.delimiter),
+    // Tells the CLI the app (and its openbase:// handler) is present, so the
+    // `login` "You're signed in" page reopens the app instead of only pointing
+    // back to a terminal.
+    OPENBASE_LAUNCHED_BY_DESKTOP: "1",
   };
 }
 
@@ -214,6 +228,18 @@ const STANDALONE_CURRENT_LINK = path.join(STANDALONE_PACKAGE_ROOT, "current");
 const BUNDLED_CLI_RESOURCE_NAME = "OpenbaseCoderCLI";
 const PACKAGE_METADATA_FILENAME = "openbase-coder-package.json";
 const OPENBASE_CLI_BIN_NAME = process.platform === "win32" ? "openbase-coder.exe" : "openbase-coder";
+const checkedStandaloneRoots = new Set();
+
+async function repairActivatedSeedLinks(packageRoot) {
+  const root = await fsp.realpath(packageRoot);
+  if (checkedStandaloneRoots.has(root)) return;
+  const repaired = await repairSeedSymlinks(
+    root,
+    path.join(process.resourcesPath || "", BUNDLED_CLI_RESOURCE_NAME),
+  );
+  checkedStandaloneRoots.add(root);
+  if (repaired) mainLogger.info("desktop-cli-seed-links-repaired", { repaired });
+}
 
 function cliPathForPackage(packageRoot) {
   return path.join(packageRoot, "bin", OPENBASE_CLI_BIN_NAME);
@@ -265,33 +291,31 @@ async function bundledCliPackage() {
   return null;
 }
 
-async function copyPackage(sourceRoot, targetRoot) {
-  const tempRoot = `${targetRoot}.staging-${process.pid}-${Date.now()}`;
-  await fsp.rm(tempRoot, { force: true, recursive: true });
-  await fsp.mkdir(path.dirname(targetRoot), { recursive: true });
-  await fsp.cp(sourceRoot, tempRoot, {
-    dereference: false,
-    preserveTimestamps: true,
-    recursive: true,
-  });
-  await fsp.chmod(cliPathForPackage(tempRoot), 0o755);
-  const livekitPath = path.join(tempRoot, "bin", process.platform === "win32" ? "livekit-server.exe" : "livekit-server");
-  if (await pathExists(livekitPath)) {
-    await fsp.chmod(livekitPath, 0o755);
-  }
-  await fsp.rm(targetRoot, { force: true, recursive: true });
-  await fsp.rename(tempRoot, targetRoot);
-}
-
 async function pointCurrentAt(targetRoot) {
+  if (isDeveloperInstallation()) {
+    throw new Error("Developer installations cannot activate bundled releases.");
+  }
   await fsp.mkdir(STANDALONE_PACKAGE_ROOT, { recursive: true });
-  await fsp.rm(STANDALONE_CURRENT_LINK, { force: true, recursive: true });
   // Real symlinks need admin/developer-mode on Windows; a directory
   // junction resolves the same way for our purposes and never prompts.
-  await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, IS_WINDOWS ? "junction" : "dir");
+  try {
+    // Exclusive creation: a CLI update/other installer that won this race
+    // owns current. Never unlink its pointer to publish our older seed.
+    await fsp.symlink(targetRoot, STANDALONE_CURRENT_LINK, IS_WINDOWS ? "junction" : "dir");
+    return true;
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    if (!(await readPackageMetadata(STANDALONE_CURRENT_LINK))) {
+      throw new Error("Existing CLI runtime is incomplete; refusing to overwrite it with the desktop seed.");
+    }
+    return false;
+  }
 }
 
 async function activateBundledCliPackageOnce() {
+  if (isDeveloperInstallation()) {
+    return { activated: false, detail: "Developer installations use the workspace CLI; bundled activation is disabled." };
+  }
   // Forward-only activation (AUTO_UPDATE.md): the bundled package is a
   // first-install seed only. Once `current` resolves to a valid install, the
   // release feed is the sole authority for what `current` points at — never
@@ -299,6 +323,7 @@ async function activateBundledCliPackageOnce() {
   // downgrade a self-updated install).
   const activeMetadata = await readPackageMetadata(STANDALONE_CURRENT_LINK);
   if (activeMetadata) {
+    await repairActivatedSeedLinks(STANDALONE_CURRENT_LINK);
     return {
       activated: true,
       cliPath: cliPathForPackage(STANDALONE_CURRENT_LINK),
@@ -323,15 +348,17 @@ async function activateBundledCliPackageOnce() {
     });
     await copyPackage(bundled.packageRoot, targetRoot);
   }
-  await pointCurrentAt(targetRoot);
+  await repairActivatedSeedLinks(targetRoot);
+  const seeded = await pointCurrentAt(targetRoot);
+  const metadata = await readPackageMetadata(STANDALONE_CURRENT_LINK);
   // Hand back the stable `current` path (not the versioned release dir) so
   // downstream consumers keep working after future self-updates re-point it.
   return {
     activated: true,
     cliPath: cliPathForPackage(STANDALONE_CURRENT_LINK),
-    detail: `Activated bundled Openbase CLI ${bundled.metadata.version}.`,
-    metadata: bundled.metadata,
-    source: "bundled",
+    detail: `Activated Openbase CLI ${metadata.version}.`,
+    metadata,
+    source: seeded ? "bundled" : "activated",
   };
 }
 
@@ -346,7 +373,7 @@ async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
   // A development installation's single source of truth is the workspace CLI
   // on PATH. Never activate the bundled package there, and don't let a stale
   // activated standalone package (whose runtime may be long gone) shadow it.
-  if (developerDashboardOnly) {
+  if (isDeveloperInstallation()) {
     const devDetail = "Using the development workspace openbase-coder on PATH.";
     if (cachedDevCliPath) {
       return { detail: devDetail, path: cachedDevCliPath, source: "path" };
@@ -359,7 +386,7 @@ async function resolveOpenbaseCoderCli({ activateBundled = true } = {}) {
       cachedDevCliPath = devPathCli;
       return { detail: devDetail, path: devPathCli, source: "path" };
     }
-    activateBundled = false;
+    return { path: null, source: "path", detail: "The development workspace openbase-coder was not found on PATH." };
   }
   if (activateBundled) {
     try {
@@ -644,6 +671,9 @@ if (!gotSingleInstanceLock) {
 }
 
 async function commandWithOptions(commandId, options = {}) {
+  if (commandId === "selfUpdate" && isDeveloperInstallation()) {
+    throw new Error("Development workspace installs are git-managed; no release updates.");
+  }
   const command = INSTALLER_COMMANDS[commandId];
   if (!command) {
     return null;
@@ -863,50 +893,22 @@ function setAppUpdateState(patch) {
   }
 }
 
-function checkForAppUpdates() {
-  autoUpdater.checkForUpdates().catch(() => {
-    // The "error" event handler already recorded and logged the failure.
-  });
-}
-
-function setupAppAutoUpdater() {
-  if (!app.isPackaged) {
-    mainLogger.info("app-update-disabled", { reason: "unpackaged development build" });
-    return;
-  }
-  // Locally packaged dev installs must not "update" themselves from the
-  // production feed (set by scripts or runtime-defaults.json).
-  if (
-    process.env.OPENBASE_DESKTOP_DISABLE_AUTOUPDATE === "1" ||
-    RUNTIME_DEFAULTS.disableAutoUpdate === true ||
-    APP_PACKAGE.openbaseDevBuild === true
-  ) {
-    mainLogger.info("app-update-disabled", { reason: "auto-update disabled for this build" });
-    return;
-  }
-
-  autoUpdater.logger = mainLogger;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("checking-for-update", () => {
-    setAppUpdateState({ error: null, status: "checking" });
-  });
-  autoUpdater.on("update-available", (info) => {
-    setAppUpdateState({ error: null, status: "downloading", version: info?.version ?? null });
-  });
-  autoUpdater.on("update-not-available", () => {
-    setAppUpdateState({ error: null, status: "up-to-date", version: null });
-  });
-  autoUpdater.on("update-downloaded", (info) => {
-    setAppUpdateState({ error: null, status: "downloaded", version: info?.version ?? null });
-  });
-  autoUpdater.on("error", (error) => {
-    setAppUpdateState({ error: error?.message ?? String(error), status: "error" });
-  });
-
-  checkForAppUpdates();
-}
+const { createAppUpdateController } = require("./app-updates.cjs");
+const appUpdates = createAppUpdateController({
+  autoUpdater,
+  getPolicy: () => ({
+    appPackaged: app.isPackaged,
+    appDevBuild: APP_PACKAGE.openbaseDevBuild === true,
+    developerDashboardOnly,
+    installation: readActiveInstallation(),
+    disabledByEnv: process.env.OPENBASE_DESKTOP_DISABLE_AUTOUPDATE,
+    disabledByDefaults: RUNTIME_DEFAULTS.disableAutoUpdate,
+  }),
+  getState: () => appUpdateState,
+  setState: setAppUpdateState,
+  logger: mainLogger,
+});
+app.on("before-quit", (event) => appUpdates.beforeQuit(event));
 
 // The preload re-executes (bridge included) in any page the window ends up
 // displaying, so no IPC channel may assume its caller is our UI. A sender is
@@ -1000,13 +1002,7 @@ trustedHandle("openbase:auth:local-api-token", async () => {
   return fetchLocalApiToken();
 });
 
-trustedHandle("openbase:app-update:check", async () => {
-  if (!app.isPackaged) {
-    return { ok: false, error: "Auto-update is disabled in development builds." };
-  }
-  checkForAppUpdates();
-  return { ok: true, state: appUpdateState };
-});
+trustedHandle("openbase:app-update:check", async () => appUpdates.check());
 
 // --- Desktop control server health ------------------------------------------
 // If the localhost control server fails to start (port exhaustion, control
@@ -1035,15 +1031,7 @@ trustedHandle("openbase:desktop-control:status", async () => {
   return { ok: true, state: desktopControlState };
 });
 
-trustedHandle("openbase:app-update:quit-and-install", async () => {
-  if (appUpdateState.status !== "downloaded") {
-    return { ok: false, error: "No downloaded update is ready to install." };
-  }
-  mainLogger.info("app-update-quit-and-install", { version: appUpdateState.version });
-  // Let the invoke reply reach the renderer before tearing the app down.
-  setImmediate(() => autoUpdater.quitAndInstall());
-  return { ok: true };
-});
+trustedHandle("openbase:app-update:quit-and-install", async () => appUpdates.install());
 
 mainLogger.info("desktop-app starting", {
   backendBaseUrl,
@@ -1070,8 +1058,8 @@ trustedHandle("openbase:livekit-companion:start-screen-share", async (_event, se
   try {
     return await liveKitCompanion.startScreenShare(session);
   } catch (error) {
-    mainLogger.error("livekit-companion-start-error", { message: error.message });
-    return { ok: false, state: "error", error: error.message };
+    mainLogger.error("livekit-companion-start-error", { message: error.message, code: error.code });
+    return { ok: false, state: "error", error: error.message, code: error.code };
   }
 });
 
@@ -1443,18 +1431,30 @@ function createWindow() {
     icon: appIconPath,
     backgroundColor: "#edf4ff",
     show: false,
-    // The console UI has no traffic-light inset of its own, so every window
-    // gets the standard macOS title bar — a hidden title bar would float the
-    // traffic lights over the sidebar wordmark. Vibrancy stays for the
-    // packaged app because onboarding renders on a transparent background.
+    // Hide the native macOS title bar so the console's own 44px top bar is
+    // the only chrome (like Obsidian). The traffic lights are inset to sit
+    // vertically centered in that bar; the console reserves space for them
+    // via `window.__OPENBASE_RUNTIME_CONFIG__.platform`.
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 13, y: 16 },
+        }
+      : {}),
+    // Vibrancy stays for the packaged app because onboarding renders on a
+    // transparent background. "followWindow" (not "active") lets macOS stop
+    // re-blurring the backdrop while the window is inactive; a forced-active
+    // blur kept WindowServer busy on an otherwise idle app.
     ...(process.platform === "darwin" && !developerDashboardOnly
       ? {
           vibrancy: "under-window",
-          visualEffectState: "active",
+          visualEffectState: "followWindow",
         }
       : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
+      // Explicit: throttle timers and rendering while the window is hidden.
+      backgroundThrottling: true,
       contextIsolation: true,
       nodeIntegration: false,
       additionalArguments: [
@@ -1619,7 +1619,22 @@ async function ensureMenuBarApp() {
     const running = await runningMenuBarApps();
     let compatibleRunning = false;
     for (const runningApp of running) {
-      const compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      let compatibility = await menuBarAppCompatibility(runningApp.appPath);
+      if (compatibility.ok) {
+        const mapped = await captureSpawn("/usr/sbin/lsof", ["-a", "-p", runningApp.pid, "-d", "txt", "-F", "fDin"]);
+        const executable = path.join(runningApp.appPath, "Contents", "MacOS", "OpenbaseNetmesh");
+        const stat = await fsp.stat(executable, { bigint: true }).catch((error) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+        const matches = stat && mapped.code === 0 ? mappedMenuBarExecutableMatches(mapped.stdout, stat) : null;
+        if (matches === false) {
+          compatibility = { ok: false, reason: "running executable belongs to a replaced app bundle" };
+        } else if (matches === null) {
+          // Retry inspection on the next sweep without killing an unidentified process.
+          mainLogger.warn("menu-bar-executable-inspection-unavailable", { pid: runningApp.pid });
+        }
+      }
       if (compatibility.ok) {
         compatibleRunning = true;
       } else {
@@ -1650,7 +1665,9 @@ async function ensureMenuBarApp() {
       }
       return;
     }
-    const opened = await captureSpawn("open", ["-g", candidate]);
+    // A stale instance may still be processing SIGTERM; do not let Launch
+    // Services route this launch back to that outgoing process.
+    const opened = await captureSpawn("open", ["-n", "-g", candidate]);
     if (opened.code === 0) {
       mainLogger.info("menu-bar-launched", { candidate });
     } else {
@@ -1732,13 +1749,13 @@ if (gotSingleInstanceLock) {
   fetchLocalApiToken().catch(() => {});
   createWindow();
   void reconcileNetmeshHelperOnLaunch({
-    enabled: nonDeveloperInstall && process.platform === "darwin",
+    enabled: nonDeveloperInstall && !isDeveloperInstallation() && process.platform === "darwin",
     readTailnetConfig: readTailnetConfigViaCli,
     register: () => netmeshCompanion.register(),
     repairAfterAppUpdate: () => netmeshCompanion.repairAfterAppUpdate(),
     logger: mainLogger,
   });
-  setupAppAutoUpdater();
+  appUpdates.check();
   // Let the first window paint before possibly showing the installer
   // cleanup dialog on a fresh install.
   setTimeout(() => {
@@ -1767,7 +1784,10 @@ if (gotSingleInstanceLock) {
   });
 }
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  // A guarded update may pause quitting while the native installer stages.
+  // Keep the running app usable if staging fails or installation is canceled.
+  if (event.defaultPrevented) return;
   desktopControlServer?.stop();
   liveKitCompanion.cleanup?.();
   // Tears down only the control process — the netmesh VPN is a launchd daemon

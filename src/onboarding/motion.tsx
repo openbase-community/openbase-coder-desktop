@@ -59,15 +59,14 @@ export function FadeUp({
 /**
  * A quiet pulsing dot shown while waiting on a remote state change —
  * calmer than a spinner, reads as "breathing" rather than "working".
+ * A CSS animation (opacity/transform only) with a bounded iteration count:
+ * a page left waiting stops repainting after about a minute, and the global
+ * window-inactive rule pauses it while the window is unfocused or hidden.
  */
 export function PulsingDot({ className = "" }: { className?: string }) {
   return (
     <span className={`relative inline-flex h-4 w-4 items-center justify-center ${className}`}>
-      <motion.span
-        animate={{ opacity: [0.35, 0.12, 0.35], scale: [0.9, 1.35, 0.9] }}
-        className="absolute inline-flex h-4 w-4 rounded-full bg-emerald-500"
-        transition={{ duration: 2.8, ease: "easeInOut", repeat: Infinity }}
-      />
+      <span className="absolute inline-flex h-4 w-4 animate-onboarding-pulse rounded-full bg-emerald-500 opacity-[0.35]" />
       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
     </span>
   );
@@ -85,20 +84,19 @@ export function OpenbaseMark({ className = "h-6 w-6" }: { className?: string }) 
   );
 }
 
-/** Logo tile with a slow breathing scale, for welcome moments. */
+/** Logo tile with a few slow breaths on entry, then still. */
 export function BreathingLogo({ size = 64 }: { size?: number }) {
   return (
     <motion.div
-      animate={{ opacity: 1, scale: [1, 1.03, 1] }}
+      animate={{ opacity: 1, scale: 1 }}
       className="flex items-center justify-center rounded-2xl bg-[#18498B] text-white shadow-lg shadow-[#18498B]/20"
       initial={{ opacity: 0, scale: 0.92 }}
       style={{ height: size, width: size }}
-      transition={{
-        opacity: { ...calmEase, duration: 0.7 },
-        scale: { duration: 5.6, ease: "easeInOut", repeat: Infinity },
-      }}
+      transition={{ ...calmEase, duration: 0.7 }}
     >
-      <OpenbaseMark className="h-1/2 w-1/2" />
+      <span className="flex h-full w-full animate-onboarding-breathe items-center justify-center">
+        <OpenbaseMark className="h-1/2 w-1/2" />
+      </span>
     </motion.div>
   );
 }

@@ -151,7 +151,7 @@ export function PrerequisitesPage({
                     {option.provider === "netmesh"
                       ? "Full experience. Requires a one-time Mac approval."
                       : option.provider === "netmesh-tsnet"
-                        ? "Use only when VPNs are blocked. Core Openbase features work, but agent-created sites will not open in other phone apps."
+                        ? "Use only when VPNs are blocked. Core Openbase features work, but agent-created sites and CLI localhost passing won't work."
                         : option.summary}
                   </div>
                 </button>

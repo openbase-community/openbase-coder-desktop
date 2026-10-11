@@ -51,10 +51,26 @@ function isExpectedCodeSignatureOutput(output) {
   );
 }
 
+// An updater renames the old bundle away while its executable stays mapped.
+// Checking the signature at the original path only checks the replacement.
+function mappedMenuBarExecutableMatches(output, stat) {
+  let record = {};
+  for (const line of output.split("\n")) {
+    const key = line[0];
+    if (key === "f") record = {};
+    record[key] = line.slice(1);
+    if (key !== "n" || !line.endsWith("/OpenbaseNetmesh.app/Contents/MacOS/OpenbaseNetmesh")) continue;
+    if (!/^0x[0-9a-f]+$/i.test(record.D || "") || !/^\d+$/.test(record.i || "")) return null;
+    return BigInt(record.D) === BigInt(stat.dev) && BigInt(record.i) === BigInt(stat.ino);
+  }
+  return null;
+}
+
 module.exports = {
   EXPECTED_CODESIGN_IDENTIFIER,
   EXPECTED_TEAM_IDENTIFIER,
   findMenuBarApp,
   isExpectedCodeSignatureOutput,
   menuBarAppCandidates,
+  mappedMenuBarExecutableMatches,
 };

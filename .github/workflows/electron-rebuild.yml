@@ -32,7 +32,7 @@ jobs:
         with:
           repository: openbase-community/openbase-coder-react
           path: coder-react
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout multi-react
         uses: actions/checkout@v4
@@ -73,7 +73,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Mirrors the workspace .nvmrc (not checked out at a matching ref here).
+          node-version: "24.18.0"
 
       - name: Set up pnpm
         run: |
@@ -145,7 +146,7 @@ jobs:
 
   rebuild-macos:
     name: rebuild macOS
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 75
     env:
       APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
@@ -168,21 +169,21 @@ jobs:
         with:
           repository: openbase-community/openbase
           path: cli
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout console
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-console
           path: console
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout coder-react
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-react
           path: coder-react
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout multi-react
         uses: actions/checkout@v4
@@ -203,14 +204,14 @@ jobs:
         with:
           repository: openbase-community/openbase-coder-skills
           path: skills
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout workspace instructions
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-workspace
           path: workspace-seed
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Prepare public build workspace
         run: |
@@ -280,7 +281,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Mirrors the workspace .nvmrc (not checked out at a matching ref here).
+          node-version: "24.18.0"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -319,11 +321,10 @@ jobs:
       - name: Install macOS release dependencies
         run: |
           brew update
-          brew install imagemagick livekit xcodegen
-          livekit_server="$(command -v livekit-server)"
-          "$livekit_server" --version
+          # LiveKit is already signed inside the released CLI seed. Only the
+          # icon and companion build tools are needed on this runner.
+          brew install imagemagick xcodegen
           xcodegen --version
-          echo "LIVEKIT_SERVER_BIN=${livekit_server}" >> "$GITHUB_ENV"
 
       - name: Import Apple signing and notarization credentials
         run: |

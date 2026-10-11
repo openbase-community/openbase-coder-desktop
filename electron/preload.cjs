@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld("__OPENBASE_RUNTIME_CONFIG__", {
   developerDashboardOnly,
   nonDeveloperInstall,
   shell: "electron",
+  platform: process.platform,
 });
 
 if (!nonDeveloperInstall) {

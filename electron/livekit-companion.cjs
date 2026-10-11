@@ -9,6 +9,7 @@ const DYNAMIC_IPC_PORT_MIN = 40000;
 const DYNAMIC_IPC_PORT_MAX = 60999;
 const COMPANION_IDENTITY = "openbase-screen-share-companion";
 const COMPANION_NAME = "Openbase Screen Share";
+const SCREEN_RECORDING_PERMISSION_CODE = "screen_recording_permission_required";
 const DEFAULT_COMPANION_LOG_PATH = path.join(
   os.homedir(),
   ".openbase",
@@ -169,7 +170,10 @@ function requestJson({ port, ipcCapabilityToken, method = "GET", path: requestPa
           }
 
           if (response.statusCode && response.statusCode >= 400) {
-            reject(new Error(parsed.error || `Companion request failed: ${response.statusCode}`));
+            const error = new Error(parsed.error || `Companion request failed: ${response.statusCode}`);
+            // Stable machine-readable reason (e.g. screen_recording_permission_required).
+            if (parsed.code) error.code = parsed.code;
+            reject(error);
             return;
           }
 
@@ -220,7 +224,7 @@ function createLiveKitCompanionManager({ electronDir, companionLogPath }) {
   async function ensureRunning() {
     const existing = await status();
     if (existing.ok) {
-      return existing;
+      return { ...existing, launched: false };
     }
 
     const companionAppPath = findCompanionApp(repoRoot);
@@ -286,7 +290,7 @@ function createLiveKitCompanionManager({ electronDir, companionLogPath }) {
       await new Promise((resolve) => setTimeout(resolve, 350));
       const response = await status();
       if (response.ok) {
-        return response;
+        return { ...response, launched: true };
       }
       lastError = response.error;
     }
@@ -307,20 +311,40 @@ function createLiveKitCompanionManager({ electronDir, companionLogPath }) {
       identity: COMPANION_IDENTITY,
     });
 
-    await ensureRunning();
-    const response = await requestJson({
-      port,
-      ipcCapabilityToken,
-      method: "POST",
-      path: "/screen-share/start",
-      body: {
-        roomUrl: session.roomUrl,
-        token: session.companionToken,
-        identity: COMPANION_IDENTITY,
-        name: COMPANION_NAME,
-        sourceType: "display",
-      },
-    });
+    const startBody = {
+      roomUrl: session.roomUrl,
+      token: session.companionToken,
+      identity: COMPANION_IDENTITY,
+      name: COMPANION_NAME,
+      sourceType: "display",
+    };
+    const running = await ensureRunning();
+    let response;
+    try {
+      response = await requestJson({
+        port,
+        ipcCapabilityToken,
+        method: "POST",
+        path: "/screen-share/start",
+        body: startBody,
+      });
+    } catch (error) {
+      // macOS applies a new Screen Recording grant only to a fresh process.
+      // If the user granted it after this companion started, relaunch once.
+      if (error.code !== SCREEN_RECORDING_PERMISSION_CODE || running.launched) {
+        throw error;
+      }
+      console.info("[livekit-companion] relaunching companion to pick up Screen Recording permission");
+      terminateCompanionProcesses();
+      await ensureRunning();
+      response = await requestJson({
+        port,
+        ipcCapabilityToken,
+        method: "POST",
+        path: "/screen-share/start",
+        body: startBody,
+      });
+    }
     lastStatus = response.state || "sharing";
     console.info("[livekit-companion] start-screen-share response", {
       ok: response.ok,

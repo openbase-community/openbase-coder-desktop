@@ -1,4 +1,4 @@
-function isDeveloperDashboardOnly({ appPackaged, envValue, installation }) {
+function isDeveloperDashboardOnly({ appPackaged, appDevBuild, envValue, installation }) {
   // Every unpackaged Electron process is a developer visual surface. A
   // development installation remains dashboard-only even if a packaged app is
   // opened on the same machine, and the env/argv override opts a packaged app
@@ -6,7 +6,7 @@ function isDeveloperDashboardOnly({ appPackaged, envValue, installation }) {
   // `open -a`, which cannot pass environment variables — main.cjs also maps
   // the --openbase-dev-dashboard argv form onto envValue). Production
   // onboarding is exercised only from a packaged standalone build.
-  return !appPackaged || installation?.standalone === false || envValue === "1";
+  return !appPackaged || appDevBuild === true || installation?.standalone === false || envValue === "1";
 }
 
 module.exports = { isDeveloperDashboardOnly };

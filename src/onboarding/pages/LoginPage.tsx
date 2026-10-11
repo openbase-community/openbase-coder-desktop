@@ -37,7 +37,7 @@ export function LoginPage({
     <PageShell
       eyebrow="Openbase account"
       heading="Sign in to Openbase"
-      support="This one Openbase account links your Mac and phone and provides cloud voice audio. If you chose Openbase Cloud for coding, the same sign-in also activates your managed coding agent."
+      support="This one Openbase account links your Mac and phone and provides cloud voice audio. If you chose Openbase Cloud for coding, the same sign-in also activates your cloud coding agent."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">

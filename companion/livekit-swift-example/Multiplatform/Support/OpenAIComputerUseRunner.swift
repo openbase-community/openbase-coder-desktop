@@ -741,14 +741,46 @@ private extension Dictionary where Key == String, Value == Any {
     }
 }
 
+/// Plain-language text the viewers show when macOS has not granted the
+/// companion Accessibility, which it needs to post mouse and keyboard events.
+let remoteControlAccessibilityDetail =
+    "Allow Accessibility for OpenbaseScreenShareCompanion on the Mac (System Settings > Privacy & Security > Accessibility), then try again."
+
 final class RemoteControlInputController {
     private var authorizedIdentity: String?
     private var accessibilityWarningLogged = false
+    private var lastReportedAccessibility: Bool?
     private(set) var isEnabled = false
 
+    /// Sends an `openbase.remote_control.status` payload to one viewer
+    /// identity (nil = everyone). Set by the room owner, which publishes it as
+    /// a LiveKit data message so the phone or console can show why control
+    /// does or does not work.
+    var statusReporter: (([String: Any], String?) -> Void)?
+
     func disable() {
+        let previousIdentity = authorizedIdentity
+        let wasEnabled = isEnabled
         authorizedIdentity = nil
         isEnabled = false
+        lastReportedAccessibility = nil
+        if wasEnabled {
+            reportStatus(to: previousIdentity, accessibilityGranted: AXIsProcessTrusted())
+        }
+    }
+
+    private func reportStatus(to identity: String?, accessibilityGranted: Bool) {
+        lastReportedAccessibility = accessibilityGranted
+        var payload: [String: Any] = [
+            "type": "openbase.remote_control.status",
+            "enabled": isEnabled,
+            "accessibilityGranted": accessibilityGranted,
+        ]
+        if !accessibilityGranted {
+            payload["code"] = "accessibility_permission_required"
+            payload["detail"] = remoteControlAccessibilityDetail
+        }
+        statusReporter?(payload, identity)
     }
 
     func handle(message: [String: Any], senderIdentity: String?, screenShareActive: Bool) {
@@ -773,11 +805,19 @@ final class RemoteControlInputController {
             print("[livekit-companion-swift] remote-control input ignored because sender is not authorized")
             return
         }
-        guard ensureAccessibilityTrusted(prompt: true) else { return }
+        let accessibilityGranted = ensureAccessibilityTrusted(prompt: false)
+        if accessibilityGranted != lastReportedAccessibility {
+            reportStatus(to: authorizedIdentity, accessibilityGranted: accessibilityGranted)
+        }
+        guard accessibilityGranted else { return }
 
         switch message["action"] as? String {
         case "move":
             moveMouseBy(deltaX: message.double("deltaX"), deltaY: message.double("deltaY"))
+        case "move_to":
+            // Console viewers send the pointer position as a fraction of the
+            // shared display (0...1), then the click.
+            moveMouseToFraction(x: message.double("x"), y: message.double("y"))
         case "click":
             click(button: message.remoteMouseButton)
         case "scroll":
@@ -815,6 +855,7 @@ final class RemoteControlInputController {
         isEnabled = true
         let accessibilityTrusted = ensureAccessibilityTrusted(prompt: true)
         print("[livekit-companion-swift] remote-control enabled sender=\(senderIdentity) accessibilityTrusted=\(accessibilityTrusted)")
+        reportStatus(to: senderIdentity, accessibilityGranted: accessibilityTrusted)
     }
 
     private func ensureAccessibilityTrusted(prompt: Bool) -> Bool {
@@ -840,6 +881,15 @@ final class RemoteControlInputController {
         let point = CGPoint(
             x: current.x + clamp(deltaX, limit: 90) * 1.35,
             y: current.y + clamp(deltaY, limit: 90) * 1.35
+        )
+        moveMouse(to: constrainedToMainDisplay(point))
+    }
+
+    private func moveMouseToFraction(x: Double, y: Double) {
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        let point = CGPoint(
+            x: bounds.minX + clamp(x, limit: 1).clamped(to: 0...1) * bounds.width,
+            y: bounds.minY + clamp(y, limit: 1).clamped(to: 0...1) * bounds.height
         )
         moveMouse(to: constrainedToMainDisplay(point))
     }
@@ -1025,6 +1075,10 @@ final class RemoteControlInputController {
 
         return map[key]
     }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }
 
 private extension Dictionary where Key == String, Value == Any {

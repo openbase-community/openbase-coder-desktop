@@ -6,7 +6,7 @@ function captureDesktopProvenance({ appPackaged, nonDeveloperInstall, desktopDir
   if (nonDeveloperInstall) return null;
   try {
     if (!appPackaged) {
-      const { capture } = require(path.join(desktopDir, "../coder-react/build/runtime-provenance.cjs"));
+      const { capture } = require(path.join(desktopDir, "../coder-react/scripts/runtime-provenance.cjs"));
       return capture(path.dirname(desktopDir), "desktop-main");
     }
     // The stamp belongs to this build, never to the checkout at launch time.
