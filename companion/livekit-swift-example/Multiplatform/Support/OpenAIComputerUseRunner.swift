@@ -814,6 +814,10 @@ final class RemoteControlInputController {
         switch message["action"] as? String {
         case "move":
             moveMouseBy(deltaX: message.double("deltaX"), deltaY: message.double("deltaY"))
+        case "move_to":
+            // Console viewers send the pointer position as a fraction of the
+            // shared display (0...1), then the click.
+            moveMouseToFraction(x: message.double("x"), y: message.double("y"))
         case "click":
             click(button: message.remoteMouseButton)
         case "scroll":
@@ -877,6 +881,15 @@ final class RemoteControlInputController {
         let point = CGPoint(
             x: current.x + clamp(deltaX, limit: 90) * 1.35,
             y: current.y + clamp(deltaY, limit: 90) * 1.35
+        )
+        moveMouse(to: constrainedToMainDisplay(point))
+    }
+
+    private func moveMouseToFraction(x: Double, y: Double) {
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        let point = CGPoint(
+            x: bounds.minX + clamp(x, limit: 1).clamped(to: 0...1) * bounds.width,
+            y: bounds.minY + clamp(y, limit: 1).clamped(to: 0...1) * bounds.height
         )
         moveMouse(to: constrainedToMainDisplay(point))
     }
@@ -1062,6 +1075,10 @@ final class RemoteControlInputController {
 
         return map[key]
     }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }
 
 private extension Dictionary where Key == String, Value == Any {
