@@ -71,11 +71,18 @@ const netmeshDir = netmeshDirCandidates.find((candidate) =>
 
 if (!netmeshDir) {
   if (existsSync(stagedAppPath)) {
-    verifyStagedMenuBar();
-    console.log(
+    // A kept prebuilt that no longer meets the minimum build (the contract
+    // moved on under it) is replaced by a fresh download rather than failing,
+    // so re-running this step is the fix the freshness check can recommend.
+    try {
+      verifyStagedMenuBar();
+      console.log(
       `[stage-netmesh-menubar] keeping prebuilt menu-bar app at ${stagedAppPath}`,
-    );
-    process.exit(0);
+      );
+      process.exit(0);
+    } catch (error) {
+      console.warn(`[stage-netmesh-menubar] replacing staged prebuilt: ${error.message}`);
+    }
   }
   downloadPrebuiltMenuBarApp();
   process.exit(0);
