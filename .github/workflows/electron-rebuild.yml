@@ -32,7 +32,7 @@ jobs:
         with:
           repository: openbase-community/openbase-coder-react
           path: coder-react
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout multi-react
         uses: actions/checkout@v4
@@ -169,21 +169,21 @@ jobs:
         with:
           repository: openbase-community/openbase
           path: cli
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout console
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-console
           path: console
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout coder-react
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-react
           path: coder-react
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout multi-react
         uses: actions/checkout@v4
@@ -204,14 +204,14 @@ jobs:
         with:
           repository: openbase-community/openbase-coder-skills
           path: skills
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Checkout workspace instructions
         uses: actions/checkout@v4
         with:
           repository: openbase-community/openbase-coder-workspace
           path: workspace-seed
-          ref: ${{ github.ref_name == 'staging' && 'staging' || 'main' }}
+          ref: ${{ (github.ref_name == 'staging' || github.ref_name == 'develop') && github.ref_name || 'main' }}
 
       - name: Prepare public build workspace
         run: |
