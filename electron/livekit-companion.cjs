@@ -80,6 +80,8 @@ function defaultCompanionAppCandidates(repoRoot) {
   return [
     process.env.OPENBASE_LIVEKIT_COMPANION_APP_PATH,
     ...packagedCompanionAppCandidates(),
+    // Developer installs: staged by scripts/setup and scripts/dev-launch.
+    path.join(repoRoot, "companion-build/OpenbaseScreenShareCompanion.app"),
     path.join(
       repoRoot,
       "companion/livekit-swift-example/.derivedData/Build/Products/Debug/OpenbaseScreenShareCompanion.app",
@@ -231,7 +233,8 @@ function createLiveKitCompanionManager({ electronDir, companionLogPath }) {
     if (!companionAppPath) {
       const searched = defaultCompanionAppCandidates(repoRoot).join(", ");
       throw new Error(
-        `LiveKit companion app bundle was not found. Build it in Xcode first or set OPENBASE_LIVEKIT_COMPANION_APP_PATH. Searched: ${searched}`,
+        "The screen-share companion app is missing from this install. Run ./scripts/dev-launch --build-only (or pnpm --dir desktop companion:stage:mac) in the workspace to stage it, " +
+          `or set OPENBASE_LIVEKIT_COMPANION_APP_PATH. Searched: ${searched}`,
       );
     }
 
