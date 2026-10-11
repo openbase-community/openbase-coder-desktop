@@ -5,6 +5,9 @@
   "description": "Desktop app for Openbase",
   "author": "Openbase",
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev:renderer": "vite --host --port 8081",
     "dev:electron": "wait-on tcp:8081 && OPENBASE_CODER_DESKTOP_RENDERER_URL=http://127.0.0.1:8081 electron .",
