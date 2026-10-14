@@ -74,6 +74,7 @@ async function handleControlRequest({
   liveKitCompanion,
   onFocusRequest,
   onDeepLink,
+  onQuitRequest,
 }) {
   if (request.headers["x-openbase-desktop-secret"] !== secret) {
     sendJson(response, 401, { ok: false, error: "Unauthorized" });
@@ -86,6 +87,13 @@ async function handleControlRequest({
         ok: true,
         companion: await liveKitCompanion.status(),
       });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/quit" && onQuitRequest) {
+      // Flush the authenticated response before Electron closes this server.
+      response.once("finish", onQuitRequest);
+      sendJson(response, 200, { ok: true });
       return;
     }
 
@@ -166,6 +174,7 @@ function createDesktopControlServer({
   logger,
   onFocusRequest,
   onDeepLink,
+  onQuitRequest,
 }) {
   const secret = crypto.randomBytes(32).toString("hex");
   const server = http.createServer((request, response) => {
@@ -176,6 +185,7 @@ function createDesktopControlServer({
       liveKitCompanion,
       onFocusRequest,
       onDeepLink,
+      onQuitRequest,
     });
   });
 
@@ -223,4 +233,5 @@ function createDesktopControlServer({
 module.exports = {
   CONTROL_FILE_PATH,
   createDesktopControlServer,
+  handleControlRequest,
 };

@@ -1,6 +1,7 @@
 // Keep startup, renderer requests and install-on-quit behind the same policy.
 function createAppUpdateController({ autoUpdater, getPolicy, getState, setState, logger, schedule = setImmediate, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let configured = false;
+  let quittingWithoutUpdate = false;
   let installScheduled = false;
   let installing = false;
   let checking = false;
@@ -26,7 +27,7 @@ function createAppUpdateController({ autoUpdater, getPolicy, getState, setState,
 
   function enabled() {
     const policy = getPolicy();
-    return policy.appPackaged && !policy.appDevBuild && !policy.developerDashboardOnly
+    return !quittingWithoutUpdate && policy.appPackaged && !policy.appDevBuild && !policy.developerDashboardOnly
       && policy.installation?.standalone !== false
       && policy.disabledByEnv !== "1" && policy.disabledByDefaults !== true;
   }
@@ -122,7 +123,12 @@ function createAppUpdateController({ autoUpdater, getPolicy, getState, setState,
     }
   }
 
-  return { check, install, prepareForQuit, beforeQuit };
+  function suppressInstallOnQuit() {
+    quittingWithoutUpdate = true;
+    prepareForQuit();
+  }
+
+  return { check, install, prepareForQuit, beforeQuit, suppressInstallOnQuit };
 }
 
 module.exports = { createAppUpdateController };

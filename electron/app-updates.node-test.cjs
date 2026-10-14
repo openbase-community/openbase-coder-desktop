@@ -161,3 +161,15 @@ test("pending network retry honors a developer switch", async () => {
   assert.deepEqual(f.calls, ["check"]);
   assert.equal(f.timers.size, 0);
 });
+
+test("menu-bar quit suppresses a downloaded update, including already scheduled install", () => {
+  const { controller, updater, calls, scheduled } = fixture();
+  controller.check();
+  updater.emit("update-downloaded", { version: "9.9.9" });
+  controller.install();
+  controller.suppressInstallOnQuit();
+  controller.beforeQuit({ preventDefault: () => assert.fail("plain quit must not be delayed") });
+  for (const run of scheduled) run();
+  assert.equal(calls.includes("install"), false);
+  assert.equal(updater.autoInstallOnAppQuit, false);
+});

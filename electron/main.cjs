@@ -1606,8 +1606,10 @@ async function runningMenuBarApps() {
   return apps;
 }
 
+let menuBarQuitRequested = false;
+
 async function ensureMenuBarApp() {
-  if (process.platform !== "darwin" || menuBarEnsureInFlight) return;
+  if (menuBarQuitRequested || process.platform !== "darwin" || menuBarEnsureInFlight) return;
   menuBarEnsureInFlight = true;
   try {
     const resolveOptions = {
@@ -1712,6 +1714,13 @@ if (gotSingleInstanceLock) {
   desktopControlServer = createDesktopControlServer({
     liveKitCompanion,
     logger: mainLogger,
+    onQuitRequest: () => {
+      // The menu-bar helper owns app-wide shutdown. Do not let a downloaded
+      // update relaunch us, or the menu-bar watchdog race its final exit.
+      menuBarQuitRequested = true;
+      appUpdates.suppressInstallOnQuit();
+      app.quit();
+    },
     onFocusRequest: () => {
       mainLogger.info("focus-requested");
       focusMainWindow();
