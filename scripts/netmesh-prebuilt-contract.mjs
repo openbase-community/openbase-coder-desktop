@@ -5,7 +5,7 @@ import path from "node:path";
 // Public desktop releases may download the private Netmesh apps as signed
 // prebuilts. Keep the minimum build here so develop cannot silently package an
 // older artifact that predates behavior the desktop runtime relies on.
-export const MINIMUM_NETMESH_BUILD = 20;
+export const MINIMUM_NETMESH_BUILD = 21;
 
 const STAGING_WEB_BACKEND_URL = "https://app-staging.openbase.cloud";
 const WEB_BACKEND_ENV_KEY = "OPENBASE_CODER_CLI_WEB_BACKEND_URL";

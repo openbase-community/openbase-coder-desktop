@@ -20,6 +20,8 @@ const {
 const { createLiveKitCompanionManager } = require("./livekit-companion.cjs");
 const { isExpectedCodeSignatureOutput, menuBarAppCandidates, mappedMenuBarExecutableMatches } = require("./menu-bar-app.cjs");
 const { createNetmeshCompanionManager } = require("./netmesh-companion.cjs");
+const { waitForBackendAfterQuit } = require("./resume-after-quit.cjs");
+const restoringAfterCompleteQuit = fs.existsSync(path.join(os.homedir(), ".openbase", "resume-after-quit.json"));
 const { reconcileNetmeshHelperOnLaunch } = require("./netmesh-launch-reconciliation.cjs");
 const { sendInstallerEvent } = require("./installer-events.cjs");
 const { createSingleFlight } = require("./single-flight.cjs");
@@ -1533,13 +1535,25 @@ function createWindow() {
   window.webContents.on("will-navigate", divertNavigation);
   window.webContents.on("will-redirect", divertNavigation);
 
-  if (rendererUrl) {
-    window.loadURL(rendererUrl);
-    window.webContents.openDevTools({ mode: "detach" });
-    return;
+  const loadDashboard = () => {
+    if (window.isDestroyed()) return;
+    if (rendererUrl) {
+      window.loadURL(rendererUrl);
+      window.webContents.openDevTools({ mode: "detach" });
+    } else {
+      window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    }
+  };
+  if (restoringAfterCompleteQuit) {
+    window.loadFile(path.join(__dirname, "starting.html"));
+    void waitForBackendAfterQuit({ backendBaseUrl, isCancelled: () => window.isDestroyed() })
+      .then((ready) => {
+        mainLogger.info("complete-quit-backend-recovery", { ready });
+        loadDashboard();
+      });
+  } else {
+    loadDashboard();
   }
-
-  window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
 // The Swift status menu-bar UI (OpenbaseNetmesh.app) pairs with the desktop
@@ -1606,8 +1620,10 @@ async function runningMenuBarApps() {
   return apps;
 }
 
+let menuBarQuitRequested = false;
+
 async function ensureMenuBarApp() {
-  if (process.platform !== "darwin" || menuBarEnsureInFlight) return;
+  if (menuBarQuitRequested || process.platform !== "darwin" || menuBarEnsureInFlight) return;
   menuBarEnsureInFlight = true;
   try {
     const resolveOptions = {
@@ -1712,6 +1728,13 @@ if (gotSingleInstanceLock) {
   desktopControlServer = createDesktopControlServer({
     liveKitCompanion,
     logger: mainLogger,
+    onQuitRequest: () => {
+      // The menu-bar helper owns app-wide shutdown. Do not let a downloaded
+      // update relaunch us, or the menu-bar watchdog race its final exit.
+      menuBarQuitRequested = true;
+      appUpdates.suppressInstallOnQuit();
+      app.quit();
+    },
     onFocusRequest: () => {
       mainLogger.info("focus-requested");
       focusMainWindow();
